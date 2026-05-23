@@ -39,3 +39,6 @@ Thumbs.db
 # CLAUDE
 CLAUDE.MD
 .claude/
+
+# Misc
+readmedocs/
