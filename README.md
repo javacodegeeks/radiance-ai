@@ -145,5 +145,7 @@ Configured in `docker/litellm-config.yaml`:
 | `gemini-2.5-pro` | Google | `GEMINI_API_KEY` |
 | `grok-3` | xAI | `XAI_API_KEY` |
 | `grok-3-mini` | xAI | `XAI_API_KEY` |
+| `groq-llama-3.3-70b` | Groq | `GROQ_API_KEY` |
+| `groq-llama-3.1-8b` | Groq | `GROQ_API_KEY` |
 
 Switch models by setting `LLM_MODEL` to any name from the table above. Only the API key for the chosen provider is required.
