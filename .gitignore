@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.npm
+
+# Build output
+dist/
+build/
+*.js.map
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Jest coverage
+coverage/
+
+# Docker volumes (local data)
+postgres_data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# CLAUDE
+CLAUDE.MD
+.claude/
+
+# Misc
+readmedocs/
