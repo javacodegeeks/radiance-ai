@@ -1,4 +1,3 @@
-import { llmClient, llmConfig } from '../llm/client';
 import { GraphStateType } from '../graph/state';
 
 /** Fields we must collect before we can research safely. */
@@ -25,14 +24,19 @@ const QUESTION_PROMPTS: Record<string, string> = {
 export async function questionerAgent(
   state: GraphStateType,
 ): Promise<Partial<GraphStateType>> {
-  const { userProfile, conversationHistory } = state;
+  const { userQuery, userProfile, queryContext, conversationHistory } = state;
 
   const missingCritical  = CRITICAL_FIELDS.filter(f => !userProfile[f]);
   const missingPreferred = PREFERRED_FIELDS.filter(f => !userProfile[f]);
 
+  // Seed originalQuery on first pass if not already set
+  const contextUpdate: Partial<GraphStateType['queryContext']> = queryContext.originalQuery
+    ? {}
+    : { originalQuery: userQuery, refinedIssue: userQuery, goals: [] };
+
   // Profile is complete once critical fields are present and at least one turn has happened
   if (missingCritical.length === 0 && conversationHistory.length >= 2) {
-    return { profileComplete: true };
+    return { profileComplete: true, queryContext: contextUpdate };
   }
 
   const missingFields = [...missingCritical, ...missingPreferred];
@@ -44,5 +48,6 @@ export async function questionerAgent(
   return {
     profileComplete: false,
     pendingQuestions: questions,
+    queryContext: contextUpdate,
   };
 }

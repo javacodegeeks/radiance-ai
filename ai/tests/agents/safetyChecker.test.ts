@@ -6,6 +6,7 @@ import { Product, SafetyRule } from '../../src/types';
 const base: GraphStateType = {
   sessionId: 'sess-1',
   userQuery: 'dry skin',
+  queryContext: { originalQuery: 'dry skin', refinedIssue: 'dry skin', goals: [] },
   userProfile: { allergies: ['fragrance_sensitivity'] },
   conversationHistory: [],
   pendingQuestions: [],
