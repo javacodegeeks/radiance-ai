@@ -22,8 +22,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: ai/package-lock.json
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
@@ -50,8 +48,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: data/package-lock.json
 
       - name: Install dependencies
         run: npm install
