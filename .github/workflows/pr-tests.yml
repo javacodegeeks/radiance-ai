@@ -25,7 +25,6 @@ jobs:
 
   test-ai:
     name: AI Layer Tests
-    needs: lint-ai
     uses: ./.github/workflows/reusable-test.yml
     with:
       package-dir: ai
@@ -34,7 +33,6 @@ jobs:
 
   test-data:
     name: Data Layer Tests
-    needs: lint-data
     uses: ./.github/workflows/reusable-test.yml
     with:
       package-dir: data
@@ -43,7 +41,7 @@ jobs:
   comment-coverage:
     name: Post Coverage Comment
     runs-on: ubuntu-latest
-    needs: [test-ai, test-data]
+    needs: [lint-ai, lint-data, test-ai, test-data]
     if: always()
     steps:
       - name: Download AI coverage
@@ -66,7 +64,25 @@ jobs:
           script: |
             const fs = require('fs');
 
-            function parseCoverage(filePath, label) {
+            const status = (result) => result === 'success' ? 'Passed' : result === 'failure' ? 'Failed' : 'Skipped';
+
+            const lintAi   = '${{ needs.lint-ai.result }}';
+            const lintData = '${{ needs.lint-data.result }}';
+            const testAi   = '${{ needs.test-ai.result }}';
+            const testData = '${{ needs.test-data.result }}';
+
+            const lintSection = [
+              '## Lint',
+              `| Package | Status |`,
+              `|---------|--------|`,
+              `| AI Layer (\`/ai\`) | ${status(lintAi)} |`,
+              `| Data Layer (\`/data\`) | ${status(lintData)} |`,
+            ].join('\n');
+
+            function parseCoverage(filePath, label, testResult) {
+              if (testResult !== 'success') {
+                return `### ${label}\n_Tests ${testResult} — coverage not available_`;
+              }
               try {
                 const summary = JSON.parse(fs.readFileSync(filePath, 'utf8')).total;
                 const fmt = (m) => `${m.covered}/${m.total} (${m.pct}%)`;
@@ -84,11 +100,15 @@ jobs:
               }
             }
 
-            const aiReport   = parseCoverage('ai-coverage/coverage-summary.json',   'AI Layer (`/ai`)');
-            const dataReport = parseCoverage('data-coverage/coverage-summary.json', 'Data Layer (`/data`)');
+            const aiReport   = parseCoverage('ai-coverage/coverage-summary.json',   'AI Layer (`/ai`)',   testAi);
+            const dataReport = parseCoverage('data-coverage/coverage-summary.json', 'Data Layer (`/data`)', testData);
 
             const body = [
-              '## Test Coverage Report',
+              '## CI Report',
+              '',
+              lintSection,
+              '',
+              '## Test Coverage',
               '',
               aiReport,
               '',
@@ -105,7 +125,7 @@ jobs:
 
             const existing = comments.find(c =>
               c.user.login === 'github-actions[bot]' &&
-              c.body.startsWith('## Test Coverage Report')
+              c.body.startsWith('## CI Report')
             );
 
             if (existing) {
