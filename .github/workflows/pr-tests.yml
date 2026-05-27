@@ -10,57 +10,35 @@ permissions:
   contents: read
 
 jobs:
+  lint-ai:
+    name: AI Layer Lint
+    uses: ./.github/workflows/reusable-lint.yml
+    with:
+      package-dir: ai
+      install-flags: --legacy-peer-deps
+
+  lint-data:
+    name: Data Layer Lint
+    uses: ./.github/workflows/reusable-lint.yml
+    with:
+      package-dir: data
+
   test-ai:
     name: AI Layer Tests
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ai
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Run tests with coverage
-        run: npm test -- --coverage --coverageReporters=json-summary text
-
-      - name: Upload coverage artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-coverage
-          path: ai/coverage/coverage-summary.json
+    needs: lint-ai
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      package-dir: ai
+      install-flags: --legacy-peer-deps
+      artifact-name: ai-coverage
 
   test-data:
     name: Data Layer Tests
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: data
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Run tests with coverage
-        run: npm test -- --coverage --coverageReporters=json-summary text
-
-      - name: Upload coverage artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: data-coverage
-          path: data/coverage/coverage-summary.json
+    needs: lint-data
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      package-dir: data
+      artifact-name: data-coverage
 
   comment-coverage:
     name: Post Coverage Comment
