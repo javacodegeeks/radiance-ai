@@ -110,8 +110,8 @@ jobs:
               }
             }
 
-            const aiReport   = parseCoverage('ai-coverage/coverage-summary.json',   '📦 AI Layer (`/ai`)');
-            const dataReport = parseCoverage('data-coverage/coverage-summary.json', '🗄️ Data Layer (`/data`)');
+            const aiReport   = parseCoverage('ai-coverage/coverage-summary.json',   'AI Layer (`/ai`)');
+            const dataReport = parseCoverage('data-coverage/coverage-summary.json', 'Data Layer (`/data`)');
 
             const body = [
               '## Test Coverage Report',
