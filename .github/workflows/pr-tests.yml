@@ -16,12 +16,14 @@ jobs:
     with:
       package-dir: ai
       install-flags: --legacy-peer-deps
+      artifact-name: ai-lint
 
   lint-data:
     name: Data Layer Lint
     uses: ./.github/workflows/reusable-lint.yml
     with:
       package-dir: data
+      artifact-name: data-lint
 
   test-ai:
     name: AI Layer Tests
@@ -44,6 +46,20 @@ jobs:
     needs: [lint-ai, lint-data, test-ai, test-data]
     if: always()
     steps:
+      - name: Download AI lint output
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-lint
+          path: ai-lint
+        continue-on-error: true
+
+      - name: Download Data lint output
+        uses: actions/download-artifact@v4
+        with:
+          name: data-lint
+          path: data-lint
+        continue-on-error: true
+
       - name: Download AI coverage
         uses: actions/download-artifact@v4
         with:
@@ -71,13 +87,26 @@ jobs:
             const testAi   = '${{ needs.test-ai.result }}';
             const testData = '${{ needs.test-data.result }}';
 
+            function readLintOutput(filePath, result) {
+              if (result === 'success') return '';
+              try {
+                const output = fs.readFileSync(filePath, 'utf8').trim();
+                return output ? `\n\n<details><summary>Lint errors</summary>\n\n\`\`\`\n${output}\n\`\`\`\n</details>` : '';
+              } catch {
+                return '';
+              }
+            }
+
+            const lintAiDetail   = readLintOutput('ai-lint/lint-output.txt',   lintAi);
+            const lintDataDetail = readLintOutput('data-lint/lint-output.txt', lintData);
+
             const lintSection = [
               '## Lint',
               `| Package | Status |`,
               `|---------|--------|`,
               `| AI Layer (\`/ai\`) | ${status(lintAi)} |`,
               `| Data Layer (\`/data\`) | ${status(lintData)} |`,
-            ].join('\n');
+            ].join('\n') + lintAiDetail + lintDataDetail;
 
             function parseCoverage(filePath, label, testResult) {
               if (testResult !== 'success') {
