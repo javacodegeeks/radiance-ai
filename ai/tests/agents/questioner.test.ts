@@ -5,6 +5,7 @@ import { Message } from '../../src/types';
 const base: GraphStateType = {
   sessionId: 'sess-1',
   userQuery: 'dry flaky skin',
+  queryContext: {},
   userProfile: {},
   conversationHistory: [],
   pendingQuestions: [],

@@ -1,5 +1,18 @@
 // ─── Core domain types ────────────────────────────────────────────────────────
 
+export interface QueryContext {
+  /** Detailed description of the issue after clarification by the Questioner */
+  refinedIssue: string;
+  /** Body area targeted: face, scalp, hands, body, etc. */
+  bodyArea?: string;
+  severity?: 'mild' | 'moderate' | 'severe';
+  duration?: string;
+  triggers?: string[];
+  previousTreatments?: string[];
+  /** e.g. "reduce redness", "hydrate", "stop hair loss" */
+  goals: string[];
+}
+
 export interface UserProfile {
   sessionId: string;
   country?: string;
@@ -64,6 +77,7 @@ export type AgentStep =
 export interface AgentState {
   sessionId: string;
   userQuery: string;
+  queryContext: Partial<QueryContext>;
   userProfile: Partial<UserProfile>;
   conversationHistory: Message[];
   pendingQuestions: string[];

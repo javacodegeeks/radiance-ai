@@ -1,0 +1,33 @@
+name: Reusable Lint
+
+on:
+  workflow_call:
+    inputs:
+      package-dir:
+        description: Package directory to lint (e.g. ai, data)
+        required: true
+        type: string
+      install-flags:
+        description: Extra flags for npm install
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install ${{ inputs.install-flags }}
+        working-directory: ${{ inputs.package-dir }}
+
+      - name: Run lint
+        run: npm run lint
+        working-directory: ${{ inputs.package-dir }}
