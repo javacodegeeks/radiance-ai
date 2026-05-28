@@ -42,5 +42,7 @@ CLAUDE.MD
 
 # Misc
 readmedocs/
+/ai/nbproject/private/
+/data/nbproject/private/
 
-package-lock.json
+
