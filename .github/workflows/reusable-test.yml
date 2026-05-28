@@ -12,10 +12,6 @@ on:
         required: false
         type: string
         default: ''
-      artifact-name:
-        description: Name for the uploaded coverage artifact
-        required: true
-        type: string
 
 jobs:
   test:
@@ -32,13 +28,6 @@ jobs:
         run: npm install ${{ inputs.install-flags }}
         working-directory: ${{ inputs.package-dir }}
 
-      - name: Run tests with coverage
-        run: npm test -- --coverage --coverageReporters=json-summary text
+      - name: Run tests
+        run: npm test
         working-directory: ${{ inputs.package-dir }}
-
-      - name: Upload coverage artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.artifact-name }}
-          path: ${{ inputs.package-dir }}/coverage/coverage-summary.json

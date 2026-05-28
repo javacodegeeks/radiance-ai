@@ -12,10 +12,6 @@ on:
         required: false
         type: string
         default: ''
-      artifact-name:
-        description: Name for the uploaded lint output artifact
-        required: true
-        type: string
 
 jobs:
   lint:
@@ -33,20 +29,5 @@ jobs:
         working-directory: ${{ inputs.package-dir }}
 
       - name: Run lint
-        id: lint
-        run: |
-          npm run lint 2>&1 | tee lint-output.txt
-          exit ${PIPESTATUS[0]}
+        run: npm run lint
         working-directory: ${{ inputs.package-dir }}
-        continue-on-error: true
-
-      - name: Upload lint output
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.artifact-name }}
-          path: ${{ inputs.package-dir }}/lint-output.txt
-
-      - name: Fail job if lint failed
-        if: steps.lint.outcome == 'failure'
-        run: exit 1
