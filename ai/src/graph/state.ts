@@ -1,5 +1,5 @@
 import { Annotation } from '@langchain/langgraph';
-import { AgentStep, Message, Product, RecommendedProduct, UserProfile } from '../types';
+import { AgentStep, Message, Product, QueryContext, RecommendedProduct, UserProfile } from '../types';
 
 export const GraphState = Annotation.Root({
   sessionId: Annotation<string>({
@@ -7,6 +7,11 @@ export const GraphState = Annotation.Root({
   }),
   userQuery: Annotation<string>({
     reducer: (_, b) => b,
+  }),
+  queryContext: Annotation<Partial<QueryContext>>({
+    // Merge partial updates so agents can patch individual fields
+    reducer: (a, b) => ({ ...a, ...b }),
+    default: () => ({}),
   }),
   userProfile: Annotation<Partial<UserProfile>>({
     // Merge partial updates so agents can patch individual fields
