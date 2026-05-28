@@ -54,6 +54,7 @@ export interface Message {
 
 export type AgentStep =
   | 'interview'
+  | 'supervisor'
   | 'research'
   | 'safety_check'
   | 'recommend'
