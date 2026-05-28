@@ -17,7 +17,7 @@ export async function run(options: RunOptions) {
   const initialState: Partial<GraphStateType> = {
     sessionId:            options.sessionId,
     userQuery:            options.userQuery,
-    queryContext:         { originalQuery: options.userQuery, refinedIssue: options.userQuery, goals: [] },
+    queryContext:         { refinedIssue: options.userQuery, goals: [] },
     userProfile:          options.existingProfile ?? {},
     conversationHistory:  [],
     pendingQuestions:     [],

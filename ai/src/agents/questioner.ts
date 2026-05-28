@@ -24,15 +24,15 @@ const QUESTION_PROMPTS: Record<string, string> = {
 export async function questionerAgent(
   state: GraphStateType,
 ): Promise<Partial<GraphStateType>> {
-  const { userQuery, userProfile, queryContext, conversationHistory } = state;
+  const { userProfile, queryContext, conversationHistory } = state;
 
   const missingCritical  = CRITICAL_FIELDS.filter(f => !userProfile[f]);
   const missingPreferred = PREFERRED_FIELDS.filter(f => !userProfile[f]);
 
-  // Seed originalQuery on first pass if not already set
-  const contextUpdate: Partial<GraphStateType['queryContext']> = queryContext.originalQuery
+  // Seed refinedIssue on first pass if not already set
+  const contextUpdate: Partial<GraphStateType['queryContext']> = queryContext.refinedIssue
     ? {}
-    : { originalQuery: userQuery, refinedIssue: userQuery, goals: [] };
+    : { refinedIssue: state.userQuery, goals: [] };
 
   // Profile is complete once critical fields are present and at least one turn has happened
   if (missingCritical.length === 0 && conversationHistory.length >= 2) {

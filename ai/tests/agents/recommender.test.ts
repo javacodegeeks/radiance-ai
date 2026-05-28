@@ -10,7 +10,7 @@ const makeProduct = (name: string, safety: RecommendedProduct['safetyStatus'], s
 const base: GraphStateType = {
   sessionId: 'sess-1',
   userQuery: 'dry skin',
-  queryContext: { originalQuery: 'dry skin', refinedIssue: 'dry skin', goals: [] },
+  queryContext: { refinedIssue: 'dry skin', goals: [] },
   userProfile: { country: 'UK' },
   conversationHistory: [],
   pendingQuestions: [],

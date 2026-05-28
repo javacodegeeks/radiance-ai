@@ -1,9 +1,7 @@
 // ─── Core domain types ────────────────────────────────────────────────────────
 
 export interface QueryContext {
-  /** Original unmodified user query */
-  originalQuery: string;
-  /** Detailed description of the issue after clarification */
+  /** Detailed description of the issue after clarification by the Questioner */
   refinedIssue: string;
   /** Body area targeted: face, scalp, hands, body, etc. */
   bodyArea?: string;
