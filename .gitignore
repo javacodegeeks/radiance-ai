@@ -44,3 +44,6 @@ CLAUDE.MD
 readmedocs/
 /ai/nbproject/private/
 /data/nbproject/private/
+
+# NetBeans project files
+**/nbproject/
