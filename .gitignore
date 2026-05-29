@@ -42,13 +42,7 @@ CLAUDE.MD
 
 # Misc
 readmedocs/
-<<<<<<< feature/supervisor-agent-llm-routing
-/ai/nbproject/private/
-/data/nbproject/private/
+package-lock.json
 
 # NetBeans project files
 **/nbproject/
-=======
-
-package-lock.json
->>>>>>> dev
