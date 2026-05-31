@@ -30,6 +30,10 @@ export const GraphState = Annotation.Root({
     reducer: (_, b) => b,
     default: () => false,
   }),
+   queryReady: Annotation<boolean>({
+    reducer: (_, b) => b,
+    default: () => false,
+  }),
   webResults: Annotation<Product[]>({
     reducer: (_, b) => b,
     default: () => [],
