@@ -55,8 +55,16 @@ cd ../data && npm install
 cd data && npm run seed
 ```
 
-This inserts ~30 ingredient safety rules (e.g. retinol + pregnancy = critical).
+- Inserts ~30 ingredient safety rules (e.g. retinol + pregnancy = critical).
+- Downloads and inserts the latest product dump from openbeautyfacts into mongodb.
 
+#### 3.1. Sync products to Qdrant
+
+```bash
+export EMBEDDING_MODEL=...
+export EMBEDDING_MODEL_DIMENSIONS=...   
+
+npm run sync -- [# of products]    # Replace [# of products] with how many products to sync
 ---
 
 ## Running
@@ -85,32 +93,13 @@ All variables have defaults suitable for local development.
 | `LITELLM_BASE_URL` | `http://localhost:4000/v1` | LiteLLM proxy endpoint |
 | `LITELLM_API_KEY` | `sk-litellm-master` | Proxy master key |
 | `LLM_MODEL` | `gpt-4o-mini` | Model name as configured in `litellm-config.yaml` |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Model name as configured in `litellm-config.yaml` |
+| `EMBEDDING_MODEL_DIMENSIONS` | `1536` | Model dimensions as configured in `litellm-config.yaml` |
 | `DB_HOST` | `localhost` | PostgreSQL host |
 | `DB_PORT` | `5432` | PostgreSQL port |
 | `DB_NAME` | `cosmetic_rai` | Database name |
 | `DB_USER` | `postgres` | Database user |
 | `DB_PASSWORD` | `postgres` | Database password |
-
----
-
-## Using the AI Layer
-
-The `ai` package exposes a single `run()` function:
-
-```typescript
-import { run } from './src/index';
-
-const result = await run({
-  sessionId: 'user-123',
-  userQuery: 'I need a moisturiser for dry skin',
-  existingProfile: {            // optional — pre-populate from session store
-    country: 'UK',
-    skinType: 'dry',
-  },
-});
-
-console.log(result.finalRecommendations);
-```
 
 ---
 
@@ -139,10 +128,12 @@ Configured in `docker/litellm-config.yaml`:
 |-----------|----------|----------------|
 | `gpt-4o-mini` | OpenAI (default) | `OPENAI_API_KEY` |
 | `gpt-4o` | OpenAI | `OPENAI_API_KEY` |
+| `text-embedding-3-small` | OpenAI | `OPENAI_API_KEY` |
 | `claude-3-5-haiku` | Anthropic | `ANTHROPIC_API_KEY` |
 | `claude-sonnet-4-5` | Anthropic | `ANTHROPIC_API_KEY` |
 | `gemini-2.0-flash` | Google | `GEMINI_API_KEY` |
 | `gemini-2.5-pro` | Google | `GEMINI_API_KEY` |
+| `gemini-embedding-2` | Google | `GEMINI_API_KEY` |
 | `grok-3` | xAI | `XAI_API_KEY` |
 | `grok-3-mini` | xAI | `XAI_API_KEY` |
 | `groq-llama-3.3-70b` | Groq | `GROQ_API_KEY` |

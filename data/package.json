@@ -5,11 +5,16 @@
   "scripts": {
     "build": "tsc",
     "lint": "eslint src --ext .ts",
-    "seed": "ts-node seeds/safety_rules.ts",
+    "seed": "ts-node seeds/safety_rules.ts && ts-node seeds/products.ts",
+    "sync": "ts-node seeds/products_vectors.ts",
     "test": "jest"
   },
   "dependencies": {
-    "pg": "^8.11.3"
+    "@qdrant/js-client-rest": "^1.16.2",
+    "mongodb": "^7.2.0",
+    "openai": "^6.41.0",
+    "pg": "^8.11.3",
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",

@@ -44,3 +44,5 @@ CLAUDE.MD
 readmedocs/
 
 package-lock.json
+
+openbeautyfacts-mongodbdump.gz

@@ -1,4 +1,4 @@
-import { TavilySearchResults } from '@langchain/community/tools/tavily_search';
+import { TavilySearch } from '@langchain/tavily';
 import { GraphStateType } from '../graph/state';
 import { Product } from '../types';
 
@@ -48,8 +48,8 @@ function buildQuery(query: string, country?: string): string {
 }
 
 async function runTavilySearch(query: string): Promise<unknown[]> {
-  const tool = new TavilySearchResults({ maxResults: MAX_RESULTS });
-  const raw  = await tool.invoke(query);
+  const tool = new TavilySearch({ maxResults: 3 });
+  const raw = await tool.invoke({ query: query });
   return JSON.parse(raw as string) as unknown[];
 }
 
