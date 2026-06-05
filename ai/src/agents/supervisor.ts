@@ -45,7 +45,7 @@ export async function supervisorAgent(
   }
   
   // STEP 5: Done
-  return { currentStep: 'end', iterationCount: next };
+  return { currentStep: 'done', iterationCount: next };
 }
 
 /** Conditional edge function — maps currentStep to graph node name. */

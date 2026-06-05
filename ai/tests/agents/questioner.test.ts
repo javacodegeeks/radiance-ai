@@ -6,6 +6,7 @@ const base: GraphStateType = {
   sessionId: 'sess-1',
   userQuery: 'dry flaky skin',
   queryContext: {},
+  queryReady: false,
   userProfile: {},
   conversationHistory: [],
   pendingQuestions: [],

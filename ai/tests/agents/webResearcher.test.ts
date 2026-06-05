@@ -19,6 +19,7 @@ const base: GraphStateType = {
   sessionId: 'sess-1',
   userQuery: 'night moisturizer',
   queryContext: {},
+  queryReady: true,
   userProfile: { country: 'UK' },
   conversationHistory: [],
   pendingQuestions: [],
@@ -87,9 +88,11 @@ describe('webResearcherAgent', () => {
 
   it('returns empty webResults when the search tool throws an error', async () => {
     invokeMock.mockRejectedValue(new Error('network failure'));
+    jest.spyOn(console, 'error').mockImplementation(() => {});
 
     const result = await webResearcherAgent(base);
 
     expect(result.webResults).toEqual([]);
+    jest.restoreAllMocks();
   });
 });
