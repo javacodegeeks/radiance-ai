@@ -13,6 +13,7 @@ const base: GraphStateType = {
   queryContext: { refinedIssue: 'dry skin', goals: [] },
   userProfile: { country: 'UK' },
   conversationHistory: [],
+  queryReady: true,
   pendingQuestions: [],
   profileComplete: true,
   webResults: [],

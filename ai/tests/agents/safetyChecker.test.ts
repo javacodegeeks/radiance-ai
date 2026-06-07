@@ -9,6 +9,7 @@ const base: GraphStateType = {
   queryContext: { refinedIssue: 'dry skin', goals: [] },
   userProfile: { allergies: ['fragrance_sensitivity'] },
   conversationHistory: [],
+  queryReady: true,
   pendingQuestions: [],
   profileComplete: true,
   webResults: [],

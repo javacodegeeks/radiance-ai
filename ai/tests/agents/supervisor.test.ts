@@ -15,6 +15,7 @@ const base: GraphStateType = {
   queryContext: {},
   userProfile: {},
   conversationHistory: [],
+  queryReady: true,
   pendingQuestions: [],
   profileComplete: false,
   webResults: [],

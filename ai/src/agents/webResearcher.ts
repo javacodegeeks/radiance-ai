@@ -71,7 +71,7 @@ async function extractBrand(content: string): Promise<string | null> {
   }
 
   try {
-    const response = await (llmClient as any).chat.completions.create({
+    const response = await llmClient.chat.completions.create({
       model:       llmConfig.model,
       temperature: 0.0,
       max_tokens:  50,
