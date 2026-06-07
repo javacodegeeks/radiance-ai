@@ -13,6 +13,7 @@ const base: GraphStateType = {
   sessionId: 'sess-1',
   userQuery: 'dry flaky skin',
   queryContext: {},
+  queryReady: false,
   userProfile: {},
   conversationHistory: [],
   pendingQuestions: [],
@@ -27,19 +28,20 @@ const base: GraphStateType = {
 };
 
 describe('supervisorAgent', () => {
-  it('routes to interview when profile is incomplete', async () => {
-    const result = await supervisorAgent({ ...base, profileComplete: false });
+  it('routes to interview when query is ready but profile is incomplete', async () => {
+    const result = await supervisorAgent({ ...base, queryReady: true, profileComplete: false });
     expect(result.currentStep).toBe('interview');
   });
 
   it('routes to research when profile complete and no web results', async () => {
-    const result = await supervisorAgent({ ...base, profileComplete: true });
+    const result = await supervisorAgent({ ...base, queryReady: true, profileComplete: true });
     expect(result.currentStep).toBe('research');
   });
 
   it('routes to safety_check when web results exist but not checked', async () => {
     const result = await supervisorAgent({
       ...base,
+      queryReady: true,
       profileComplete: true,
       webResults: [mockProduct],
       safetyCheckedProducts: [],
@@ -50,6 +52,7 @@ describe('supervisorAgent', () => {
   it('routes to recommend when safety checks done', async () => {
     const result = await supervisorAgent({
       ...base,
+      queryReady: true,
       profileComplete: true,
       webResults: [mockProduct],
       safetyCheckedProducts: [mockCheckedProduct],

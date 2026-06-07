@@ -11,6 +11,7 @@ const base: GraphStateType = {
   sessionId: 'sess-1',
   userQuery: 'dry skin',
   queryContext: { refinedIssue: 'dry skin', goals: [] },
+  queryReady: true,
   userProfile: { country: 'UK' },
   conversationHistory: [],
   pendingQuestions: [],

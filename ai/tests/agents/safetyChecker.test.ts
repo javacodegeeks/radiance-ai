@@ -7,6 +7,7 @@ const base: GraphStateType = {
   sessionId: 'sess-1',
   userQuery: 'dry skin',
   queryContext: { refinedIssue: 'dry skin', goals: [] },
+  queryReady: true,
   userProfile: { allergies: ['fragrance_sensitivity'] },
   conversationHistory: [],
   pendingQuestions: [],
