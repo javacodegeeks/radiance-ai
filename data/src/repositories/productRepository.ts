@@ -1,6 +1,17 @@
 import { Db, Document, ObjectId } from 'mongodb';
+import { Schemas } from '@qdrant/js-client-rest';
+import { v5 as uuidv5 } from 'uuid';
 import { getDb } from '../mongo';
 import { qdrant } from '../qdrant';
+
+// Fixed namespace for consistent UUID generation
+const UUID_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+
+// Convert MongoDB ID → Valid Qdrant UUID
+export function toQdrantId(mongoId: any): string {
+  const idStr = String(mongoId || 'unknown');
+  return uuidv5(idStr, UUID_NAMESPACE);
+}
 
 export interface ProductDocument extends Document {
   _id: ObjectId | string;
@@ -58,27 +69,32 @@ export class ProductRepository {
         }
       : undefined;
 
-    const searchResponse = await qdrant.search(COLLECTION_NAME, {
+    const searchRequest: Schemas['SearchRequest'] = {
       vector: embedding,
       limit,
       with_payload: true,
       filter,
-    } as any);
+    };
 
-    const hits = Array.isArray((searchResponse as any).result)
-      ? (searchResponse as any).result
-      : (searchResponse as any);
+    const hits = await qdrant.search(COLLECTION_NAME, searchRequest);
+    const mongoIds: string[] = hits
+      .map((hit) => {
+        const payload = hit.payload as Record<string, unknown> | undefined;
+        return payload?.mongo_id as string | undefined;
+      })
+      .filter((id): id is string => id !== undefined);
 
-    const ids: string[] = hits.map((hit: any) => this.normalizeId(hit.id));
-    if (!ids.length) return [];
+    if (!mongoIds.length) return [];
 
     const db = await this.dbPromise;
     const products = await db
       .collection<ProductDocument>(COLLECTION_NAME)
-      .find(this.buildMongoIdFilter(ids))
+      .find(this.buildMongoIdFilter(mongoIds))
       .toArray();
 
-    const order = new Map<string, number>(ids.map((id, index): [string, number] => [id, index]));
+    const order = new Map<string, number>(
+      mongoIds.map((id, index): [string, number] => [id, index])
+    );
     return products.sort((a, b) => {
       const aId = this.normalizeId(a._id);
       const bId = this.normalizeId(b._id);
@@ -89,8 +105,9 @@ export class ProductRepository {
   private async syncProductToQdrant(product: ProductDocument): Promise<void> {
     if (!product.embedding?.length) return;
 
-    const id = product.code?.toString() || this.normalizeId(product._id);
+    const qdrantId = toQdrantId(product._id || product.code);
     const payload = {
+      mongo_id: String(product._id || product.code),
       code: product.code,
       product_name: product.product_name || product.product_name_en,
       brands: product.brands,
@@ -101,15 +118,17 @@ export class ProductRepository {
       completeness: product.completeness,
     };
 
-    await qdrant.upsert(COLLECTION_NAME, {
+    const upsertPayload: Schemas['PointInsertOperations'] = {
       points: [
         {
-          id,
+          id: qdrantId,
           vector: product.embedding,
           payload,
         },
       ],
-    } as any);
+    };
+
+    await qdrant.upsert(COLLECTION_NAME, upsertPayload);
   }
 
   async upsertCached(product: Omit<ProductDocument, '_id' | 'cached_at'>): Promise<ProductDocument> {
@@ -125,16 +144,15 @@ export class ProductRepository {
       },
     };
 
-    const result = await collection.findOneAndUpdate(key, update, {
+    await collection.updateOne(key, update, {
       upsert: true,
-      returnDocument: 'after',
     });
 
-    if (!result || !result.value) {
-      throw new Error('Failed to upsert product into MongoDB');
+    const savedProduct = await collection.findOne(key);
+    if (!savedProduct) {
+      throw new Error('Failed to retrieve product after upsert into MongoDB');
     }
 
-    const savedProduct = result.value as ProductDocument;
     await this.syncProductToQdrant(savedProduct);
     return savedProduct;
   }

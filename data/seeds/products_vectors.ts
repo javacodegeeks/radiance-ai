@@ -1,11 +1,12 @@
 import { getDb, closeDb } from '../src/mongo';
 import { qdrant, generateEmbedding } from '../src/qdrant';
-import { v5 as uuidv5 } from 'uuid';
+import { toQdrantId } from '../src/repositories/productRepository';
 
 const COLLECTION_NAME = 'products';
 
-// Fixed namespace for consistent UUID generation
-const UUID_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export async function initQdrantCollection() {
   const exists = await qdrant.collectionExists(COLLECTION_NAME);
@@ -13,7 +14,7 @@ export async function initQdrantCollection() {
   if (!exists.exists) {
     await qdrant.createCollection(COLLECTION_NAME, {
       vectors: {
-        size: process.env.EMBEDDING_MODEL_DIMENSIONS ? parseInt(process.env.EMBEDDING_MODEL_DIMENSIONS) : 1536,
+        size: Number(process.env.EMBEDDING_MODEL_DIMENSIONS ?? 1536) || 1536,
         distance: 'Cosine',
       },
     });
@@ -24,21 +25,23 @@ export async function initQdrantCollection() {
 }
 
 function buildSearchableText(product: any): string {
-  return [
-    product.product_name,
-    product.product_name_en,
-    product.brands,
-    product.categories,
-    product.ingredients_text,
-    product.ingredients_text_en,
-    product.product_type === 'beauty' ? 'skincare cosmetics beauty product' : '',
-  ].filter(Boolean).join(" | ");
-}
+  const categories = Array.isArray(product.categories)
+    ? product.categories.join(' | ')
+    : product.categories;
 
-// Convert MongoDB ID → Valid Qdrant UUID
-function toQdrantId(mongoId: any): string {
-  const idStr = String(mongoId || 'unknown');
-  return uuidv5(idStr, UUID_NAMESPACE);
+  return `
+    ${product.product_name ?? ''}
+    ${product.product_name_en ?? ''}
+    ${product.brands ?? ''}
+    ${categories ?? ''}
+    ${product.ingredients_text ?? ''}
+    ${product.ingredients_text_en ?? ''}
+    ${product.product_type === 'beauty' ? 'skincare cosmetics beauty product' : ''}
+  `
+    .split(/\r?\n/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join(' | ');
 }
 
 export async function syncProductsToQdrant(limit = 0) {

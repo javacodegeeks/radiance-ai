@@ -1,6 +1,7 @@
 import { TavilySearch } from '@langchain/tavily';
 import { GraphStateType } from '../graph/state';
 import { Product } from '../types';
+import { llmClient, llmConfig } from '../llm/client';
 
 const MAX_RESULTS = 10;
 
@@ -19,20 +20,20 @@ const COUNTRY_OPERATORS: Record<string, string> = {
 
 /**
  * Web Researcher agent.
- * Primary product source — always runs before the internal catalog.
+ * Primary product source — runs after the internal catalog for finer product matching.
  * Falls back to an empty result (catalog fallback handled by Supervisor routing).
  */
 export async function webResearcherAgent(
   state: GraphStateType,
 ): Promise<Partial<GraphStateType>> {
-  const { userQuery, userProfile } = state;
+  const { userQuery, queryContext, userProfile } = state;
   const country = userProfile.country;
 
-  const query = buildQuery(userQuery, country);
+  const query = buildQuery(queryContext.refinedIssue ?? userQuery, country);
 
   try {
     const rawResults = await runTavilySearch(query);
-    const products   = parseResults(rawResults, country);
+    const products   = await parseResults(rawResults, country);
     return { webResults: products };
   } catch (err) {
     console.error('[webResearcher] Search failed — returning empty results:', err);
@@ -40,32 +41,62 @@ export async function webResearcherAgent(
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function buildQuery(query: string, country?: string): string {
   const op = country ? (COUNTRY_OPERATORS[country] ?? `"available in ${country}"`) : '';
   return `cosmetic skincare products for ${query} ${op}`.trim();
 }
 
 async function runTavilySearch(query: string): Promise<unknown[]> {
-  const tool = new TavilySearch({ maxResults: 3 });
+  const tool = new TavilySearch({ maxResults: MAX_RESULTS });
   const raw = await tool.invoke({ query: query });
   return JSON.parse(raw as string) as unknown[];
 }
 
-function parseResults(results: unknown[], country?: string): Product[] {
-  return (results as Array<{ title?: string; url?: string; content?: string }>).map(r => ({
+async function parseResults(results: unknown[], country?: string): Promise<Product[]> {
+  return Promise.all((results as Array<{ title?: string; url?: string; content?: string }>).map(async (r) => ({
     name:                r.title   ?? 'Unknown Product',
-    brand:               extractBrand(r.content ?? '') ?? 'Unknown Brand',
+    brand:               (await extractBrand(r.content ?? '')) ?? 'Unknown Brand',
     inci:                [],   // TODO: enrich via INCI parser tool
     categories:          [],
     countryAvailability: country ? [country] : [],
     sourceUrl:           r.url,
     cachedAt:            new Date(),
-  }));
+  })));
 }
 
-function extractBrand(content: string): string | null {
-  // TODO: implement LLM-assisted brand extraction from page content
-  return null;
+async function extractBrand(content: string): Promise<string | null> {
+  const normalizedContent = content.trim();
+  if (!normalizedContent) {
+    return null;
+  }
+
+  try {
+    const response = await (llmClient as any).chat.completions.create({
+      model:       llmConfig.model,
+      temperature: 0.0,
+      max_tokens:  50,
+      messages: [
+        {
+          role:    'system',
+          content: 'You are a cosmetics brand extraction assistant. Extract only the brand name from the provided page content and return that brand name as plain text.',
+        },
+        {
+          role:    'user',
+          content: `Extract the cosmetic brand from the following web page content. If no brand can be determined, reply with Unknown.\n\n${normalizedContent}`,
+        },
+      ],
+    });
+
+    const rawText = String(response?.choices?.[0]?.message?.content ?? '').trim();
+    const brand = rawText.replace(/^['"]|['"]$/g, '').trim();
+
+    if (!brand || /^unknown$/i.test(brand) || /(no brand|unable to determine|n\/a)/i.test(brand)) {
+      return null;
+    }
+
+    return brand;
+  } catch (error) {
+    console.error('[webResearcher] Brand extraction failed:', error);
+    return null;
+  }
 }
