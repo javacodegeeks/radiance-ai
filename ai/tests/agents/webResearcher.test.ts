@@ -70,15 +70,11 @@ describe('webResearcherAgent', () => {
   });
 
   it('returns parsed web results for successful search responses', async () => {
-    invokeMock.mockResolvedValue(
-      JSON.stringify([
-        {
-          title: 'Hydrating Night Cream',
-          url: 'https://example.com/night-cream',
-          content: 'A nourishing formulation by BrandX',
-        },
-      ]),
-    );
+    invokeMock.mockResolvedValue({
+      results: [
+        { title: 'Hydrating Night Cream', url: 'https://example.com/night-cream', content: 'A nourishing formulation by BrandX' },
+      ],
+    });
     llmClient.chat.completions.create.mockResolvedValue({
       choices: [{ message: { content: 'BrandX' } }],
     });
@@ -100,11 +96,11 @@ describe('webResearcherAgent', () => {
   });
 
   it('builds a query without country-specific operators when country is absent', async () => {
-    invokeMock.mockResolvedValue(
-      JSON.stringify([
+    invokeMock.mockResolvedValue({
+      results: [
         { title: 'Moisture Gel', url: 'https://example.com/moisture-gel', content: '' },
-      ]),
-    );
+      ],
+    });
 
     const result = await webResearcherAgent({
       ...base,

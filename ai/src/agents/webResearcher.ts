@@ -3,7 +3,7 @@ import { GraphStateType } from '../graph/state';
 import { Product } from '../types';
 import { llmClient, llmConfig } from '../llm/client';
 
-const MAX_RESULTS = 3;
+const MAX_RESULTS = 10;
 
 /**
  * Country-specific search operators.
