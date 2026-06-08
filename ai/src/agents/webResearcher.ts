@@ -3,7 +3,7 @@ import { GraphStateType } from '../graph/state';
 import { Product } from '../types';
 import { llmClient, llmConfig } from '../llm/client';
 
-const MAX_RESULTS = 10;
+const MAX_RESULTS = 3;
 
 /**
  * Country-specific search operators.
@@ -20,7 +20,7 @@ const COUNTRY_OPERATORS: Record<string, string> = {
 
 /**
  * Web Researcher agent.
- * Primary product source — runs after the internal catalog for finer product matching.
+ * Secondary product source — runs after the internal catalog for finer product matching.
  * Falls back to an empty result (catalog fallback handled by Supervisor routing).
  */
 export async function webResearcherAgent(
@@ -49,7 +49,7 @@ function buildQuery(query: string, country?: string): string {
 async function runTavilySearch(query: string): Promise<unknown[]> {
   const tool = new TavilySearch({ maxResults: MAX_RESULTS });
   const raw = await tool.invoke({ query: query });
-  return JSON.parse(raw as string) as unknown[];
+  return raw.results ?? [];
 }
 
 async function parseResults(results: unknown[], country?: string): Promise<Product[]> {
