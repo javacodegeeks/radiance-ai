@@ -49,23 +49,32 @@ cd ai && npm install
 cd ../data && npm install
 ```
 
-### 3. Seed the database
+### 3. Seed the databases
+
+#### 3.1. Seed products from Open Beauty Facts
 
 ```bash
-cd data && npm run seed
+docker compose -f docker/docker-compose.yml --profile seed run --rm obf-seed
 ```
 
-- Inserts ~30 ingredient safety rules (e.g. retinol + pregnancy = critical).
 - Downloads and inserts the latest product dump from openbeautyfacts into mongodb.
 
-#### 3.1. Sync products to Qdrant
+#### 3.2. Sync products to Qdrant
 
 ```bash
 export EMBEDDING_MODEL=...
 export EMBEDDING_MODEL_DIMENSIONS=...   
 
 npm run sync -- [# of products]    # Replace [# of products] with how many products to sync
----
+```
+
+#### 3.3. Seed safty rules
+
+```bash
+cd data && npm run seed
+```
+
+- Inserts ~30 ingredient safety rules (e.g. retinol + pregnancy = critical).
 
 ## Running
 
