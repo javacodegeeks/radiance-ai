@@ -11,7 +11,7 @@ const MAX_ITERATIONS = 10;
 export async function supervisorAgent(
   state: GraphStateType,
 ): Promise<Partial<GraphStateType>> {
-  const { profileComplete, queryReady, iterationCount, webResults, safetyCheckedProducts, finalRecommendations } = state;
+  const { currentStep,profileComplete, queryReady, iterationCount, catalogResults, safetyCheckedProducts, finalRecommendations } = state;
 
   if (iterationCount >= MAX_ITERATIONS) {
     return { currentStep: 'error', error: 'Max iterations reached — aborting to prevent infinite loop.' };
@@ -23,28 +23,28 @@ export async function supervisorAgent(
   if (queryReady && !profileComplete)  {
     return { currentStep: 'interview', iterationCount: next };
   }
-
-    // if (!profileComplete) {
-   // We still proceed, but supervisor can choose to revisit later if needed
-  //  return { currentStep: 'interview', iterationCount: next };
-  //}
   
-  // STEP 2: Query ready → do research
-  if (webResults.length === 0) {
-    return { currentStep: 'research', iterationCount: next };
+  // STEP 2: Query ready → find products in catalog first (primary source)
+  if (currentStep === 'interview' && catalogResults.length === 0) {
+    return { currentStep: 'catalog_search', iterationCount: next };
+  }
+
+  // STEP 3: Query ready →  if catalog fails, try web search as fallback (secondary source)
+  if (currentStep === 'catalog_search' && catalogResults.length === 0) {
+    return { currentStep: 'web_search', iterationCount: next };
   }
   
- // STEP 3: Run safety checks
+  // STEP 4: Run safety checks
   if (safetyCheckedProducts.length === 0) {
     return { currentStep: 'safety_check', iterationCount: next };
   }
 
-  //  STEP 4: Generate recommendations
+  // STEP 5: Generate recommendations
   if (finalRecommendations.length === 0) {
     return { currentStep: 'recommend', iterationCount: next };
   }
   
-  // STEP 5: Done
+  // STEP 6: Done
   return { currentStep: 'done', iterationCount: next };
 }
 

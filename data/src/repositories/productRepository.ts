@@ -21,12 +21,11 @@ export interface ProductDocument extends Document {
   brands?: string;
   categories?: string[];
   countries?: string[];
+  ingredients?: string[];
   ingredients_text?: string;
   ingredients_text_en?: string;
   product_type?: string;
   completeness?: number;
-  source_url?: string;
-  is_pre_vetted?: boolean;
   embedding?: number[];
   cached_at?: Date;
   [key: string]: unknown;
@@ -112,9 +111,9 @@ export class ProductRepository {
       product_name: product.product_name || product.product_name_en,
       brands: product.brands,
       categories: product.categories,
+      ingredients: product.ingredients_text || product.ingredients_text_en,
       countries: product.countries,
       product_type: product.product_type,
-      source_url: product.source_url,
       completeness: product.completeness,
     };
 

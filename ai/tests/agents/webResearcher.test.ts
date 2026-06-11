@@ -52,7 +52,7 @@ const base: GraphStateType = {
   catalogResults: [],
   safetyCheckedProducts: [],
   finalRecommendations: [],
-  currentStep: 'research',
+  currentStep: 'web_search',
   iterationCount: 0,
   error: undefined,
 };

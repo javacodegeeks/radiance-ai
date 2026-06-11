@@ -67,7 +67,8 @@ export interface Message {
 
 export type AgentStep =
   | 'interview'
-  | 'research'
+  | 'catalog_search'
+  | 'web_search'
   | 'safety_check'
   | 'recommend'
   | 'done'
