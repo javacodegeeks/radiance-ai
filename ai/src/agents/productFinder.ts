@@ -19,7 +19,7 @@ export async function productFinderAgent(
   const { userQuery, queryContext, userProfile } = state;
   const country = userProfile.country;
 
-  const query = await buildQuery(queryContext.refinedIssue ?? userQuery, country);
+  const query = await buildQuery(queryContext.refinedIssue ?? userQuery);
 
   try {
     const embedding  = await generateEmbedding(query);
@@ -32,7 +32,7 @@ export async function productFinderAgent(
   }
 }
 
-async function buildQuery(query: string, country?: string): Promise<string> {
+async function buildQuery(query: string): Promise<string> {
   const inci = await findIngredients(query);
   return `cosmetic skincare products for ${query} ${inci ? `with ingredients: ${inci}` : ''}`.trim();
 }
