@@ -55,6 +55,12 @@ export interface RecommendedProduct extends Product {
   /** 0–1 composite score combining safety and query relevance */
   relevanceScore: number;
   availabilityNotes?: string;
+  /** Why this product addresses the user's specific issue */
+  relevanceToQuery?: string;
+  /** Detailed reasoning behind the recommendation */
+  reasoning?: string;
+  /** How to use the product for best results */
+  usageTips?: string[];
 }
 
 export interface Message {
