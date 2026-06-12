@@ -1,6 +1,7 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 
+// @ts-ignore — LangChain tool() triggers TS2589 deep generic instantiation
 export const pgvectorSearchTool = tool(
   async ({ _embedding, _limit = 5, _country }) => {
     // TODO: inject real db pool — avoid top-level import to keep tool testable

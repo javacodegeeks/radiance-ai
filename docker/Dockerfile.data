@@ -1,0 +1,22 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Radiance AI — Data seed runner
+#
+# One-shot container: runs the safety-rules seed then exits.
+# Start with the "seed" Docker Compose profile:
+#   docker-compose --profile seed up data-seed
+#
+# Build context must be the repo root (set in docker-compose).
+# ─────────────────────────────────────────────────────────────────────────────
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY data/package*.json ./
+RUN npm install --legacy-peer-deps
+
+COPY data/ .
+
+# Default command seeds safety rules into PostgreSQL.
+# Override CMD at runtime to run a different script, e.g.:
+#   docker-compose run data-seed npx ts-node seeds/products_vectors.ts
+CMD ["npx", "ts-node", "seeds/safety_rules.ts"]

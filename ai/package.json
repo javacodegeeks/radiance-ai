@@ -1,7 +1,10 @@
 {
-  "name": "cosmetic-rai-ai-layer",
+  "name": "radiance-ai-core",
   "version": "0.1.0",
   "private": true,
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "files": ["dist"],
   "scripts": {
     "build": "tsc",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
