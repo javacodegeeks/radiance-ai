@@ -64,7 +64,7 @@ export async function syncProductsToQdrant(limit = 0) {
       product_name: product.product_name || product.product_name_en,
       brands: product.brands,
       categories: product.categories,
-      ingredients: product.ingredients_text,
+      ingredients: product.ingredients_text || product.ingredients_text_en,
       countries: product.countries,
       product_type: product.product_type,
       completeness: product.completeness,
