@@ -8,7 +8,10 @@ const nextConfig = {
       '@langchain/core',
       '@langchain/community',
       '@langchain/tavily',
+      '@qdrant/js-client-rest',
+      'mongodb',
       'openai',
+      'uuid',
       'zod',
     ],
   },
@@ -22,7 +25,10 @@ const nextConfig = {
         '@langchain/core',
         '@langchain/community',
         '@langchain/tavily',
+        '@qdrant/js-client-rest',
+        'mongodb',
         'openai',
+        'uuid',
         'zod',
       ];
       const existing = Array.isArray(config.externals) ? config.externals : [];

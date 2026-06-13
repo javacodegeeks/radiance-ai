@@ -15,9 +15,15 @@ FROM node:20-alpine AS ai-builder
 # python3/make/g++ are needed by some native deps (e.g. node-gyp)
 RUN apk add --no-cache python3 make g++
 
+WORKDIR /repo/data
+COPY data/package*.json ./
+RUN npm install --legacy-peer-deps
+
 WORKDIR /repo/ai
 COPY ai/package*.json ./
 RUN npm install --legacy-peer-deps
+# Copy both layers so tsc can resolve relative imports from ai/ into data/src/
+COPY data/ /repo/data/
 COPY ai/ .
 # Increase heap for tsc — LangGraph types are large and hit the default limit
 RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build

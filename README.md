@@ -4,18 +4,113 @@ A cosmetic product recommendation system powered by a multi-agent LLM workflow. 
 
 ## Architecture
 
-```
-User Query
-    │
-    ▼
-Supervisor (deterministic routing)
-    ├── Questioner   — collects skin profile, allergies, country
-    ├── Web Researcher — fetches products via Tavily Search
-    ├── Safety Checker — validates ingredients against contraindications (PostgreSQL)
-    └── Recommender  — ranks and returns top 5 products
+```mermaid
+flowchart TD
+    subgraph UI["ui/ — Next.js 14"]
+        Browser["Browser Chat"]
+        Hook["useChat hook"]
+        Cards["RecommendationCard"]
+        Route["POST /api/chat"]
+        SessionStore["Session Store"]
+        AIClient["aiClient.ts"]
+    end
+
+    subgraph AI["ai/ — radiance-ai-core"]
+        Supervisor["Supervisor\n(deterministic router)"]
+        Interview["Interview Agent"]
+        Research["Web Research Agent\n(Tavily)"]
+        Safety["Safety Check Agent"]
+        Recommend["Recommender Agent\n(LLM explanations)"]
+    end
+
+    subgraph Infra["Infrastructure (Docker)"]
+        PG["PostgreSQL\nsafety_rules"]
+        Mongo["MongoDB\nOBF products"]
+        Qdrant["Qdrant\nvector search"]
+        LiteLLM["LiteLLM Proxy\n:4000"]
+    end
+
+    Browser --> Hook --> Route
+    Route --> SessionStore
+    Route --> AIClient
+    AIClient -->|"in-process (default)"| Supervisor
+    AIClient -->|"AI_BACKEND_URL set"| ExtService["Remote AI Service"]
+
+    Supervisor --> Interview
+    Supervisor --> Research
+    Supervisor --> Safety
+    Supervisor --> Recommend
+
+    Safety --> PG
+    Research --> Mongo
+    Research --> Qdrant
+    Interview --> LiteLLM
+    Safety --> LiteLLM
+    Recommend --> LiteLLM
+
+    Recommend --> Route
+    Route --> Cards --> Browser
 ```
 
 All LLM calls route through a **LiteLLM proxy** (port 4000), which abstracts over OpenAI and Anthropic models. Product safety rules are stored in **PostgreSQL 16 + pgvector**.
+
+### Request Flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as Next.js UI<br/>(port 3000)
+    participant API as /api/chat<br/>(route.ts)
+    participant Session as Session Store<br/>(in-memory Map)
+    participant Client as aiClient.ts<br/>(plug-and-play)
+    participant Core as radiance-ai-core<br/>(in-process)
+    participant Graph as LangGraph Workflow
+
+    User->>UI: types message
+    UI->>API: POST /api/chat<br/>{ sessionId, message }
+
+    API->>Session: getSession(sessionId)
+    Session-->>API: session { phase, answers }
+
+    alt phase = init / collecting
+        API->>Session: store answer, advance question index
+        API-->>UI: { phase: collecting, message: "next question" }
+        UI-->>User: displays next profile question
+    end
+
+    alt phase = processing (all 4 answers collected)
+        API->>Client: invokeGraph(userProfile, query)
+
+        alt AI_BACKEND_URL is empty
+            Client->>Core: require('radiance-ai-core').run(options)
+        else AI_BACKEND_URL is set
+            Client->>Client: fetch(AI_BACKEND_URL + '/invoke', body)
+        end
+
+        Core->>Graph: invoke(state)
+
+        loop LangGraph State Machine (max 10 iterations)
+            Graph->>Graph: SUPERVISOR — deterministic routing
+            alt incomplete profile
+                Graph->>Graph: INTERVIEW agent
+            else no research results
+                Graph->>Graph: RESEARCH agent<br/>(Tavily web search)
+            else safety not checked
+                Graph->>Graph: SAFETY_CHECK agent<br/>(PostgreSQL rules)
+            else ready
+                Graph->>Graph: RECOMMEND agent<br/>(LLM explanations)
+            end
+        end
+
+        Graph-->>Core: final state
+        Core-->>Client: { recommendations[], error? }
+        Client-->>API: GraphResult
+
+        API->>Session: setSession phase = done
+        API-->>UI: { phase: done, recommendations[] }
+        UI-->>User: renders RecommendationCards
+    end
+```
 
 ---
 
