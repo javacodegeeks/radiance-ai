@@ -2,7 +2,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 
 export const pgvectorSearchTool = tool(
-  async ({ embedding, limit = 5, country }) => {
+  async ({ _embedding, _limit = 5, _country }) => {
     // TODO: inject real db pool — avoid top-level import to keep tool testable
     throw new Error('pgvectorSearchTool: database injection not configured. Wire via dependency injection.');
   },
@@ -12,9 +12,9 @@ export const pgvectorSearchTool = tool(
       'Search the internal product catalog using vector similarity. ' +
       'Use ONLY as a fallback when the web search is unavailable.',
     schema: z.object({
-      embedding: z.array(z.number()).describe('1536-dim query embedding vector'),
-      limit:     z.number().optional().describe('Maximum results to return (default: 5)'),
-      country:   z.string().optional().describe('Filter by country availability'),
+      _embedding: z.array(z.number()).describe('1536-dim query embedding vector'),
+      _limit:     z.number().optional().describe('Maximum results to return (default: 5)'),
+      _country:   z.string().optional().describe('Filter by country availability'),
     }),
   },
 );

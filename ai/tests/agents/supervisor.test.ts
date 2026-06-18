@@ -33,9 +33,26 @@ describe('supervisorAgent', () => {
     expect(result.currentStep).toBe('interview');
   });
 
-  it('routes to research when profile complete and no web results', async () => {
+  it('routes to catalog_search when profile complete and no catalog results', async () => {
     const result = await supervisorAgent({ ...base, queryReady: true, profileComplete: true });
-    expect(result.currentStep).toBe('research');
+    expect(result.currentStep).toBe('catalog_search');
+  });
+
+  it('routes to web_search when profile complete and no catalog results', async () => {
+    const result = await supervisorAgent({ ...base, queryReady: true, profileComplete: true, currentStep: 'catalog_search' });
+    expect(result.currentStep).toBe('web_search');
+  });
+
+  it('routes to safety_check when catalog results exist but not checked', async () => {
+    const result = await supervisorAgent({
+      ...base,
+      queryReady: true,
+      profileComplete: true,
+      catalogResults: [mockProduct],
+      safetyCheckedProducts: [],
+      currentStep: 'catalog_search',
+    });
+    expect(result.currentStep).toBe('safety_check');
   });
 
   it('routes to safety_check when web results exist but not checked', async () => {
@@ -45,6 +62,7 @@ describe('supervisorAgent', () => {
       profileComplete: true,
       webResults: [mockProduct],
       safetyCheckedProducts: [],
+      currentStep: 'web_search',
     });
     expect(result.currentStep).toBe('safety_check');
   });
@@ -56,6 +74,7 @@ describe('supervisorAgent', () => {
       profileComplete: true,
       webResults: [mockProduct],
       safetyCheckedProducts: [mockCheckedProduct],
+      currentStep: 'safety_check',
     });
     expect(result.currentStep).toBe('recommend');
   });
@@ -74,7 +93,7 @@ describe('supervisorAgent', () => {
 
 describe('routeAfterSupervisor', () => {
   it('returns the currentStep as the routing key', () => {
-    expect(routeAfterSupervisor({ ...base, currentStep: 'research' })).toBe('research');
+    expect(routeAfterSupervisor({ ...base, currentStep: 'catalog_search' })).toBe('catalog_search');
     expect(routeAfterSupervisor({ ...base, currentStep: 'done' })).toBe('done');
   });
 });
