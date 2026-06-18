@@ -20,7 +20,7 @@ export async function supervisorAgent(
   const next = iterationCount + 1;
   
   // STEP 1: Always go to Questioner until ready
-  if (queryReady && !profileComplete)  {
+  if (!queryReady || !profileComplete)  {
     return { currentStep: 'interview', iterationCount: next };
   }
   
