@@ -9,8 +9,32 @@ jest.mock('@langchain/tavily', () => {
   };
 });
 
+jest.mock('../../src/llm/client', () => ({
+  llmClient: {
+    chat: {
+      completions: {
+        create: jest.fn(),
+      },
+    },
+  },
+  llmConfig: {
+    model: 'gpt-4o-mini',
+    temperature: 0.7,
+    max_tokens: 2048,
+  },
+}));
+
 const { TavilySearch: TavilySearchMock } = jest.requireMock('@langchain/tavily') as {
   TavilySearch: jest.Mock;
+};
+const { llmClient } = jest.requireMock('../../src/llm/client') as {
+  llmClient: {
+    chat: {
+      completions: {
+        create: jest.Mock;
+      };
+    };
+  };
 };
 
 let invokeMock: jest.Mock;
@@ -28,7 +52,7 @@ const base: GraphStateType = {
   catalogResults: [],
   safetyCheckedProducts: [],
   finalRecommendations: [],
-  currentStep: 'research',
+  currentStep: 'web_search',
   iterationCount: 0,
   error: undefined,
 };
@@ -39,29 +63,32 @@ describe('webResearcherAgent', () => {
     invokeMock = jest.fn();
     TavilySearchMock.mockClear();
     TavilySearchMock.mockImplementation(() => ({ invoke: invokeMock }));
+    llmClient.chat.completions.create.mockClear();
+    llmClient.chat.completions.create.mockResolvedValue({
+      choices: [{ message: { content: 'Unknown' } }],
+    });
   });
 
   it('returns parsed web results for successful search responses', async () => {
-    invokeMock.mockResolvedValue(
-      JSON.stringify([
-        {
-          title: 'Hydrating Night Cream',
-          url: 'https://example.com/night-cream',
-          content: 'A nourishing formulation by BrandX',
-        },
-      ]),
-    );
+    invokeMock.mockResolvedValue({
+      results: [
+        { title: 'Hydrating Night Cream', url: 'https://example.com/night-cream', content: 'A nourishing formulation by BrandX' },
+      ],
+    });
+    llmClient.chat.completions.create.mockResolvedValue({
+      choices: [{ message: { content: 'BrandX' } }],
+    });
 
     const result = await webResearcherAgent(base);
 
-    expect(TavilySearchMock).toHaveBeenCalledWith({ maxResults: 3 });
+    expect(TavilySearchMock).toHaveBeenCalledWith({ maxResults: 10 });
     expect(invokeMock).toHaveBeenCalledWith({
       query: 'cosmetic skincare products for night moisturizer site:.co.uk OR "available in UK"',
     });
     expect(result.webResults).toHaveLength(1);
     expect(result.webResults?.[0]).toMatchObject({
       name: 'Hydrating Night Cream',
-      brand: 'Unknown Brand',
+      brand: 'BrandX',
       sourceUrl: 'https://example.com/night-cream',
       countryAvailability: ['UK'],
     });
@@ -69,11 +96,11 @@ describe('webResearcherAgent', () => {
   });
 
   it('builds a query without country-specific operators when country is absent', async () => {
-    invokeMock.mockResolvedValue(
-      JSON.stringify([
+    invokeMock.mockResolvedValue({
+      results: [
         { title: 'Moisture Gel', url: 'https://example.com/moisture-gel', content: '' },
-      ]),
-    );
+      ],
+    });
 
     const result = await webResearcherAgent({
       ...base,

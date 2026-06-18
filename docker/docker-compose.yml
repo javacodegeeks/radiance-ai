@@ -19,54 +19,60 @@ services:
       retries: 5
 
   mongodb:
-      image: mongo:7
-      environment:
-        MONGO_INITDB_DATABASE: obf
-        MONGO_INITDB_ROOT_USERNAME: mongo
-        MONGO_INITDB_ROOT_PASSWORD: mongo
-      ports:
-        - '27017:27017'
-      volumes:
-        - mongodb_data:/data/db
-      healthcheck:
-        test: ['CMD', 'mongosh', '--eval', 'db.runCommand({ ping: 1 })']
-        interval: 5s
-        timeout: 5s
-        retries: 5
+    image: mongo:7
+    environment:
+      MONGO_INITDB_DATABASE: obf
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: mongo
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', 'db.runCommand({ ping: 1 })']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  obf-seed:
+    image: mongo:7
+    profiles: ["seed"]
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./obf-seed:/seed
+    working_dir: /seed
+    command: bash /seed/seed.sh
 
   qdrant:
-      image: qdrant/qdrant:latest
-      ports:
-        - '6333:6333'    # HTTP API
-        - '6334:6334'    # gRPC
-      volumes:
-        - qdrant_data:/qdrant/storage
-      healthcheck:
-        test: ['CMD', 'true'] # Qdrant doesn't have a built-in health check, so we use a simple command that always returns true. In production, you might want to implement a more robust check.
-        interval: 5s
-        timeout: 5s
-        retries: 5
+    image: qdrant/qdrant:v1.18.2
+    ports:
+      - '6333:6333'    # HTTP API
+      - '6334:6334'    # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
 
   litellm:
-      image: ghcr.io/berriai/litellm:main-latest
-      environment:
-        OPENAI_API_KEY: ${OPENAI_API_KEY}
-        ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-        GEMINI_API_KEY: ${GEMINI_API_KEY}
-        XAI_API_KEY: ${XAI_API_KEY}
-        GROQ_API_KEY: ${GROQ_API_KEY}
-      ports:
-        - '4000:4000'
-      volumes:
-        - ./litellm-config.yaml:/app/config.yaml
-      command: ['--config', '/app/config.yaml', '--port', '4000']
-      depends_on:
-        postgres:
-          condition: service_healthy
-        mongodb:
-          condition: service_healthy  
-        qdrant:
-          condition: service_healthy
+    image: ghcr.io/berriai/litellm:1.87.1
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      XAI_API_KEY: ${XAI_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+    ports:
+      - '4000:4000'
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml
+    command: ['--config', '/app/config.yaml', '--port', '4000']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy  
+      qdrant:
+        condition: service_started
 
 volumes:
   postgres_data:

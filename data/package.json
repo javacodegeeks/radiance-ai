@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc",
     "lint": "eslint src --ext .ts",
-    "seed": "ts-node seeds/safety_rules.ts && ts-node seeds/products.ts",
+    "seed": "ts-node seeds/safety_rules.ts",
     "sync": "ts-node seeds/products_vectors.ts",
     "test": "jest"
   },
