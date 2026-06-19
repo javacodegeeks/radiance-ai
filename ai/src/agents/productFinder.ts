@@ -21,10 +21,13 @@ export async function productFinderAgent(
 
   const query = await buildQuery(queryContext.refinedIssue ?? userQuery);
 
+  console.log(`[productFinder] query="${query}"`);
   try {
-    const embedding  = await generateEmbedding(query);
+    const embedding = await generateEmbedding(query);
     const rawResults = await repo.findSimilar(embedding, MAX_RESULTS, country);
-    const products   = parseResults(rawResults);
+    const products = parseResults(rawResults);
+    console.log(`[productFinder] found ${products.length} product(s)`);
+    console.log(`[productFinder] products=${products.map(p => p.name).join(', ')}`);
     return { catalogResults: products };
   } catch (err) {
     console.error('[productFinder] Search failed — returning empty results:', err);
@@ -37,13 +40,19 @@ async function buildQuery(query: string): Promise<string> {
   return `cosmetic skincare products for ${query} ${inci ? `with ingredients: ${inci}` : ''}`.trim();
 }
 
+function toArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value.trim()) return value.split(',').map(s => s.trim());
+  return [];
+}
+
 function parseResults(results: ProductDocument[]): Product[] {
   return results.map((r) => ({
     name:                r.product_name ?? r.product_name_en ?? 'Unknown Product',
     brand:               r.brands ?? 'Unknown Brand',
-    inci:                r.ingredients ?? [],
-    categories:          r.categories ?? [],
-    countryAvailability: r.countries ?? [],
+    inci:                toArray(r.ingredients),
+    categories:          toArray(r.categories),
+    countryAvailability: toArray(r.countries),
     cachedAt:            r.cached_at,
   }));
 }
@@ -113,17 +122,17 @@ async function findIngredients(content: string): Promise<string | null> {
 
   try {
     const response = await llmClient.chat.completions.create({
-      model:       llmConfig.model,
+      model: llmConfig.model,
       temperature: 0.0,
-      max_tokens:  150,
+      max_tokens: 150,
       messages: [
         {
-          role:    'system',
+          role: 'system',
           content:
             'You are a cosmetics ingredient research assistant. Your ONLY job is to return a comma-separated INCI-formatted list of suitable ingredients. Return NOTHING ELSE—no explanations, no sentences, only the ingredient list. If you cannot determine suitable ingredients, respond with: Unknown',
         },
         {
-          role:    'user',
+          role: 'user',
           content: `Return a comma-separated INCI-formatted list of the most suitable ingredients for: ${normalizedContent}\n\nRespond with ONLY the comma-separated list or "Unknown". No other text.`,
         },
       ],

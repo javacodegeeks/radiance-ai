@@ -3,20 +3,13 @@ import { llmClient } from '../../ai/src/llm/client';
 
 export async function generateEmbedding(text: string): Promise<number[]> {
   const model = process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small';
-  const isGemini = model.includes('gemini');
 
-  const createParams: {
-    model: string;
-    input: string;
-    dimensions?: number;
-  } = {
-    model,
-    input: text,
-  };
-
-  // Gemini models have fixed dimensions; only set for other providers
-  if (!isGemini) {
-    createParams.dimensions = Number(process.env.EMBEDDING_MODEL_DIMENSIONS ?? "1536") || 1536;
+  // Only pass dimensions for models that support it (OpenAI text-embedding-3-*).
+  // Gemini and local models (nomic, etc.) use fixed dimensions.
+  const supportsCustomDimensions = model.startsWith('text-embedding-3');
+  const createParams: { model: string; input: string; dimensions?: number } = { model, input: text };
+  if (supportsCustomDimensions) {
+    createParams.dimensions = Number(process.env.EMBEDDING_MODEL_DIMENSIONS ?? '1536') || 1536;
   }
 
   const response = await llmClient.embeddings.create(createParams);

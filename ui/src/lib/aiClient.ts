@@ -25,6 +25,7 @@ export interface RunOptions {
     allergies?: string[];
     conditions?: string[];
   };
+  conversationHistory?: Array<{ role: 'user' | 'assistant' | 'system'; content: string; timestamp: Date }>;
 }
 
 export interface RecommendedProductDTO {

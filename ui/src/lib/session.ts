@@ -12,12 +12,26 @@ export interface CollectedProfile {
   answers: Record<string, string>;
 }
 
-export type SessionPhase = 'init' | 'collecting' | 'processing' | 'done' | 'error';
+export interface QuestioningState {
+  userQuery: string;
+  existingProfile: {
+    country?: string;
+    skinType?: string;
+    allergies?: string[];
+    conditions?: string[];
+  };
+  pendingQuestions: string[];
+  questionIndex: number;
+  conversationHistory: Array<{ role: 'assistant' | 'user'; content: string }>;
+}
+
+export type SessionPhase = 'init' | 'collecting' | 'questioning' | 'processing' | 'done' | 'error';
 
 export interface Session {
   id: string;
   phase: SessionPhase;
   profile: CollectedProfile | null;
+  questioning: QuestioningState | null;
   createdAt: Date;
 }
 
@@ -37,6 +51,7 @@ export function createSession(id: string): Session {
     id,
     phase: 'init',
     profile: null,
+    questioning: null,
     createdAt: new Date(),
   };
   sessions.set(id, session);

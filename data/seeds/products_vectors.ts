@@ -4,24 +4,33 @@ import { toQdrantId } from '../src/repositories/productRepository';
 
 const COLLECTION_NAME = 'products';
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const BATCH_SIZE = 100;
+const CONCURRENCY = 5;
 
-export async function initQdrantCollection() {
-  const exists = await qdrant.collectionExists(COLLECTION_NAME);
-  
-  if (!exists.exists) {
-    await qdrant.createCollection(COLLECTION_NAME, {
-      vectors: {
-        size: Number(process.env.EMBEDDING_MODEL_DIMENSIONS ?? 1536) || 1536,
-        distance: 'Cosine',
-      },
-    });
-    console.log(`✅ Created Qdrant collection: ${COLLECTION_NAME}`);
+export async function initQdrantCollection(): Promise<number> {
+  // Auto-detect dims from actual model output — never trust env var alone
+  const testEmbedding = await generateEmbedding('test');
+  const dims = testEmbedding.length;
+
+  const { exists } = await qdrant.collectionExists(COLLECTION_NAME);
+
+  if (exists) {
+    const info = await qdrant.getCollection(COLLECTION_NAME);
+    const existingDims = (info.config?.params?.vectors as any)?.size as number | undefined;
+    if (existingDims && existingDims !== dims) {
+      console.log(`Collection has ${existingDims} dims but model returns ${dims} — recreating...`);
+      await qdrant.deleteCollection(COLLECTION_NAME);
+      await qdrant.createCollection(COLLECTION_NAME, {
+        vectors: { size: dims, distance: 'Cosine' },
+      });
+    }
   } else {
-    console.log(`✅ Qdrant collection '${COLLECTION_NAME}' already exists`);
+    await qdrant.createCollection(COLLECTION_NAME, {
+      vectors: { size: dims, distance: 'Cosine' },
+    });
   }
+
+  return dims;
 }
 
 function buildSearchableText(product: any): string {
@@ -44,64 +53,90 @@ function buildSearchableText(product: any): string {
     .join(' | ');
 }
 
+async function flushPoints(points: any[], count: number) {
+  if (points.length === 0) return;
+
+  await qdrant.upsert(COLLECTION_NAME, { points });
+  points.length = 0;
+  console.log(`Synced ${count} products...`);
+}
+
+async function buildPoint(product: any) {
+  const qdrantId = toQdrantId(product._id || product.code);
+
+  const payload = {
+    mongo_id: String(product._id || product.code),
+    code: product.code,
+    product_name: product.product_name || product.product_name_en,
+    brands: product.brands,
+    categories: product.categories,
+    ingredients: product.ingredients_text || product.ingredients_text_en,
+    countries: product.countries,
+    product_type: product.product_type,
+    completeness: product.completeness,
+  };
+
+  const vector = await generateEmbedding(buildSearchableText(product));
+
+  return { id: qdrantId, vector, payload };
+}
+
 export async function syncProductsToQdrant(limit = 0) {
-  console.log(`🔄 Syncing ${limit || 'all'} products to Qdrant...`);
-  
-  await initQdrantCollection();
+  console.log(`Syncing ${limit || 'all'} products to Qdrant...`);
+
+  const dims = await initQdrantCollection();
+  console.log(`Embedding dimensions: ${dims}`);
 
   const mongoDb = await getDb();
+
+  const documentsCounts = mongoDb.collection('products').countDocuments();
+  console.log(`Total products in MongoDB: ${await documentsCounts}`);
+
   const cursor = mongoDb.collection('products').find({});
 
   let count = 0;
   const points: any[] = [];
+  const batch: Promise<any>[] = [];
 
   for await (const product of cursor) {
-    const qdrantId = toQdrantId(product._id || product.code);
+    batch.push(buildPoint(product));
 
-    const payload = {
-      mongo_id: String(product._id || product.code),   // Original ID for reference
-      code: product.code,
-      product_name: product.product_name || product.product_name_en,
-      brands: product.brands,
-      categories: product.categories,
-      ingredients: product.ingredients_text || product.ingredients_text_en,
-      countries: product.countries,
-      product_type: product.product_type,
-      completeness: product.completeness,
-    };
+    if (batch.length >= CONCURRENCY) {
+      const results = await Promise.all(batch);
+      batch.length = 0;
 
-    const vector = await generateEmbedding(buildSearchableText(product));
+      for (const point of results) {
+        points.push(point);
+        count++;
+      }
 
-    points.push({
-      id: qdrantId,
-      vector,
-      payload,
-    });
-
-    count++;
-    if (count % 50 === 0) {
-      await qdrant.upsert(COLLECTION_NAME, { points });
-      points.length = 0;
-      console.log(`✅ Synced ${count} products...`);
+      if (count % BATCH_SIZE === 0) {
+        await flushPoints(points, count);
+      }
     }
 
     if (limit && count >= limit) break;
   }
 
-  // Upsert remaining points
-  if (points.length > 0) {
-    await qdrant.upsert(COLLECTION_NAME, { points });
+  if (batch.length > 0) {
+    const results = await Promise.all(batch);
+    for (const point of results) {
+      points.push(point);
+      count++;
+    }
   }
 
-  console.log(`🎉 Successfully synced ${count} products to Qdrant!`);
+  await flushPoints(points, count);
+
+  console.log(`Successfully synced ${count} products to Qdrant!`);
 }
 
 export async function verifyQdrantSync(expectedCount?: number) {
-  console.log('\n🔍 Verifying Qdrant sync...');
+  console.log('\nVerifying Qdrant sync...');
 
   const exists = await qdrant.collectionExists(COLLECTION_NAME);
   if (!exists.exists) {
-    console.warn(`⚠️ Qdrant collection '${COLLECTION_NAME}' does not exist.`);
+    console.warn(`Qdrant collection '${COLLECTION_NAME}' does not exist.`);
     return false;
   }
 
@@ -110,13 +145,13 @@ export async function verifyQdrantSync(expectedCount?: number) {
     ? countResponse
     : (countResponse as any).count ?? 0;
 
-  console.log(`📊 Qdrant point count: ${pointCount}`);
+  console.log(`Qdrant point count: ${pointCount}`);
 
   if (expectedCount && expectedCount > 0) {
     if (pointCount >= expectedCount) {
-      console.log(`✅ Qdrant has at least ${expectedCount} synced points.`);
+      console.log(`Qdrant has at least ${expectedCount} synced points.`);
     } else {
-      console.warn(`⚠️ Expected ${expectedCount} points, but found ${pointCount}.`);
+      console.warn(`Expected ${expectedCount} points, but found ${pointCount}.`);
     }
   }
 
@@ -125,7 +160,7 @@ export async function verifyQdrantSync(expectedCount?: number) {
 
 async function main() {
   const raw = process.argv[2];
-  const limit = raw ? parseInt(raw, 10) : 0;
+  const limit = raw ? Number.parseInt(raw, 10) : 0;
 
   if (raw && Number.isNaN(limit)) {
     console.error('Invalid numeric limit:', raw);

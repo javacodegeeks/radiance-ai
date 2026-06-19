@@ -18,7 +18,7 @@ UI will be available at http://localhost:3000
 Populates ingredient safety rules into PostgreSQL.
 Requires postgres to be healthy (wait ~10s after step 1).
 
-    docker-compose -f docker/docker-compose.yml --env-file .env --profile seed up data-seed
+    docker-compose -f docker/docker-compose.yml --env-file .env --profile seed up --build data-seed
 
 
 3. SEED OPEN BEAUTY FACTS PRODUCTS  (optional, run once)
@@ -26,7 +26,13 @@ Requires postgres to be healthy (wait ~10s after step 1).
 Downloads and imports the Open Beauty Facts product catalogue into MongoDB.
 Warning: large download (~250 MB). Skipped automatically if data is up to date.
 
-    docker-compose -f docker/docker-compose.yml --env-file .env --profile obf up obf-seed
+    docker-compose -f docker/docker-compose.yml --env-file .env --profile obf up --build obf-seed
+
+    ## to add to vector store (run from /data directory):
+    ## cd data && EMBEDDING_MODEL=nomic-embed-text LITELLM_BASE_URL=http://localhost:4000/v1 LITELLM_API_KEY=sk-litellm-master npm run sync
+    ## Note: dimensions are auto-detected — no need to set EMBEDDING_MODEL_DIMENSIONS.
+    ## Switching embedding models? The Qdrant collection is recreated automatically.
+    
 
 
 OTHER USEFUL COMMANDS
@@ -57,6 +63,8 @@ Prerequisites: Node.js 20+, npm.
 Starts only the backing services (no ui container):
 
     docker-compose -f docker/docker-compose.yml --env-file .env up -d postgres mongodb qdrant litellm
+
+    docker-compose -f docker/docker-compose.yml --env-file .env down -v --remove-orphans
 
 
 2. CONFIGURE ENVIRONMENT
@@ -91,7 +99,9 @@ Run once, and again any time you change code under /ai:
     # App available at http://localhost:3000
 
 Shortcut — rebuild ai and start ui dev server:
-    cd ui && npm run dev:setup && npm run dev
+    cd ui && npm install && npm run dev
+
+    cd ui && npm install && npm run dev:setup && npm run dev
 
 
 5. SEED DATABASE  (run once after first infra start)
@@ -103,3 +113,8 @@ Shortcut — rebuild ai and start ui dev server:
 ------------
     cd ai  && npm test
     cd data && npm test
+
+
+docker-compose -f docker/docker-compose.yml --env-file .env up -d litellm
+
+cd ai && npm install && npm run build && cd ../ui && npm install && npm run dev:setup && npm run dev

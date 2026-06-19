@@ -48,3 +48,5 @@ package-lock.json
 
 openbeautyfacts-mongodbdump.gz
 openbeautyfacts-mongodbdump.gz.etag
+
+.next/

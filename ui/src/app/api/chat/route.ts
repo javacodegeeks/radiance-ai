@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getSession, setSession, createSession } from '@/lib/session';
+import type { QuestioningState } from '@/lib/session';
 import { invokeGraph } from '@/lib/aiClient';
 import type { ChatMessage, ChatResponse, RecommendationResult } from '@/types/chat';
 
@@ -108,26 +109,65 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      setSession(sessionId, { ...session, phase: 'done' });
-
-      const recs = (graphResult.finalRecommendations ?? []) as RecommendationResult[];
-      if (recs.length === 0) {
+      // Graph needs more info — enter questioning phase
+      if (graphResult.pendingQuestions && graphResult.pendingQuestions.length > 0) {
+        const questioningState: QuestioningState = {
+          userQuery,
+          existingProfile,
+          pendingQuestions: graphResult.pendingQuestions,
+          questionIndex:    0,
+          conversationHistory: [],
+        };
+        setSession(sessionId, { ...session, phase: 'questioning', questioning: questioningState });
         return NextResponse.json<ChatResponse>({
-          messages: [
-            msg('assistant', "I couldn't find suitable products for your concern right now. Try rephrasing or starting a new search."),
-          ],
-          phase:           'done',
-          recommendations: [],
+          messages: [msg('assistant', graphResult.pendingQuestions[0])],
+          phase:    'questioning',
         });
       }
 
-      return NextResponse.json<ChatResponse>({
-        messages: [
-          msg('assistant', `Here are your personalised recommendations based on your concern:`),
-        ],
-        phase:           'done',
-        recommendations: recs,
-      });
+      return buildRecommendationResponse(session, sessionId, graphResult);
+    }
+
+    // ── QUESTIONING: collect answers to LLM follow-up questions, then resume ──
+    if (session.phase === 'questioning' && session.questioning) {
+      const { pendingQuestions, questionIndex, conversationHistory, userQuery, existingProfile } = session.questioning;
+      const currentQ = pendingQuestions[questionIndex];
+
+      const now = new Date();
+      const updatedHistory = [
+        ...conversationHistory.map(m => ({ ...m, timestamp: now })),
+        { role: 'assistant' as const, content: currentQ, timestamp: now },
+        { role: 'user'      as const, content: message,  timestamp: now },
+      ];
+
+      const nextIndex = questionIndex + 1;
+
+      if (nextIndex < pendingQuestions.length) {
+        setSession(sessionId, {
+          ...session,
+          questioning: { ...session.questioning, questionIndex: nextIndex, conversationHistory: updatedHistory },
+        });
+        return NextResponse.json<ChatResponse>({
+          messages: [msg('assistant', pendingQuestions[nextIndex])],
+          phase:    'questioning',
+        });
+      }
+
+      // All questions answered — resume graph with conversation history
+      setSession(sessionId, { ...session, phase: 'processing' });
+      let graphResult;
+      try {
+        graphResult = await invokeGraph({ sessionId, userQuery, existingProfile, conversationHistory: updatedHistory });
+      } catch (err) {
+        setSession(sessionId, { ...session, phase: 'error' });
+        return NextResponse.json<ChatResponse>({
+          messages: [msg('assistant', 'Something went wrong while analysing your query. Please try again.')],
+          phase:    'error',
+          error:    err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      return buildRecommendationResponse(session, sessionId, graphResult);
     }
 
     // ── DONE / ERROR: treat next message as a fresh query ─────────────────────
@@ -162,4 +202,31 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function buildRecommendationResponse(
+  session: ReturnType<typeof createSession>,
+  sessionId: string,
+  graphResult: Awaited<ReturnType<typeof invokeGraph>>,
+): ReturnType<typeof NextResponse.json<ChatResponse>> {
+  setSession(sessionId, { ...session, phase: 'done' });
+
+  const recs = (graphResult.finalRecommendations ?? []) as RecommendationResult[];
+  if (recs.length === 0) {
+    return NextResponse.json<ChatResponse>({
+      messages: [
+        msg('assistant', "I couldn't find suitable products for your concern right now. Try rephrasing or starting a new search."),
+      ],
+      phase:           'done',
+      recommendations: [],
+    });
+  }
+
+  return NextResponse.json<ChatResponse>({
+    messages: [msg('assistant', 'Here are your personalised recommendations based on your concern:')],
+    phase:           'done',
+    recommendations: recs,
+  });
 }

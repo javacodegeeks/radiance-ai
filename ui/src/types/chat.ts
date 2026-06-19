@@ -26,7 +26,7 @@ export interface RecommendationResult {
   usageTips?: string[];
 }
 
-export type ChatPhase = 'collecting' | 'processing' | 'done' | 'error';
+export type ChatPhase = 'collecting' | 'questioning' | 'processing' | 'done' | 'error';
 
 export interface ChatRequest {
   sessionId: string;

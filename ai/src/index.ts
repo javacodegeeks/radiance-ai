@@ -11,6 +11,8 @@ export interface RunOptions {
   userQuery: string;
   /** Pre-populated profile fields from session store */
   existingProfile?: Partial<GraphStateType['userProfile']>;
+  /** Q&A pairs from a previous questioner round — passed on resume */
+  conversationHistory?: Array<{ role: 'user' | 'assistant' | 'system'; content: string; timestamp: Date }>;
 }
 
 export async function run(options: RunOptions) {
@@ -19,7 +21,7 @@ export async function run(options: RunOptions) {
     userQuery:            options.userQuery,
     queryContext:         { refinedIssue: options.userQuery, goals: [] },
     userProfile:          options.existingProfile ?? {},
-    conversationHistory:  [],
+    conversationHistory:  options.conversationHistory ?? [],
     pendingQuestions:     [],
     profileComplete:      false,
     webResults:           [],

@@ -62,10 +62,12 @@ export async function recommenderAgent(
 ): Promise<Partial<GraphStateType>> {
   const { safetyCheckedProducts, userProfile } = state;
 
-  const ranked  = rank(safetyCheckedProducts);
-  const safe    = ranked.filter(p => p.safetyStatus !== 'unsafe');
-  const top     = safe.slice(0, MAX_RECOMMENDATIONS);
+  const ranked   = rank(safetyCheckedProducts);
+  const safe     = ranked.filter(p => p.safetyStatus !== 'unsafe');
+  const top      = safe.slice(0, MAX_RECOMMENDATIONS);
   const excluded = ranked.filter(p => p.safetyStatus === 'unsafe');
+
+  console.log(`[recommender] ranked=${ranked.length} safe=${safe.length} top=${top.length} excluded=${excluded.length}`);
 
   const withNotes = top.map(p => ({
     ...p,
@@ -74,8 +76,10 @@ export async function recommenderAgent(
 
   try {
     const explained = await enrichWithLlm(withNotes, excluded, state);
+    console.log(`[recommender] generated ${explained.length} recommendation(s)`);
     return { finalRecommendations: explained, currentStep: 'done' };
-  } catch {
+  } catch (err) {
+    console.error('[recommender] LLM enrichment failed — using unenriched results:', err);
     return { finalRecommendations: withNotes, currentStep: 'done' };
   }
 }
@@ -147,10 +151,9 @@ ${excludedList}
 Write personalised explanations for each recommended product.`;
 
   const response = await llmClient.chat.completions.create({
-    model:           llmConfig.model,
-    temperature:     0.3,
-    max_tokens:      2048,
-    response_format: { type: 'json_object' },
+    model:       llmConfig.model,
+    temperature: 0.3,
+    max_tokens:  2048,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user',   content: userPrompt },

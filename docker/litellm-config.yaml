@@ -39,6 +39,19 @@ model_list:
       model: gemini/gemini-embedding-2
       api_key: os.environ/GEMINI_API_KEY
 
+  #### LM Studio Models
+  - model_name: nomic-embed-text
+    litellm_params:
+      model: openai/text-embedding-nomic-embed-text-v1.5
+      api_base: http://host.docker.internal:1234/v1
+      api_key: os.environ/LM_STUDIO_API_KEY
+
+  - model_name: gemma-4-local
+    litellm_params:
+      model: openai/google/gemma-4-e4b
+      api_base: http://host.docker.internal:1234/v1
+      api_key: os.environ/LM_STUDIO_API_KEY
+
   - model_name: grok-3
     litellm_params:
       model: xai/grok-3
@@ -61,6 +74,7 @@ model_list:
 
 general_settings:
   master_key: sk-litellm-master
+  database_url: "postgres://postgres:postgres@postgres:5432/cosmetic_rai"
 
 litellm_settings:
   success_callback: ["langfuse"]

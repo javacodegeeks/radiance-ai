@@ -19,11 +19,16 @@ export async function safetyCheckerAgent(
     ...(userProfile.conditions ?? []),
   ];
 
+  console.log(`[safetyChecker] checking ${allProducts.length} product(s) against conditions: [${userConditions.join(', ') || 'none'}]`);
+
   const checked = await Promise.all(
     allProducts.map(p => assessProduct(p, userConditions)),
   );
 
-  const safe = checked.filter(p => p.safetyStatus !== 'unsafe');
+  const safe    = checked.filter(p => p.safetyStatus !== 'unsafe');
+  const unsafe  = checked.filter(p => p.safetyStatus === 'unsafe');
+  const caution = checked.filter(p => p.safetyStatus === 'caution');
+  console.log(`[safetyChecker] safe=${safe.length} caution=${caution.length} unsafe=${unsafe.length}`);
   return { safetyCheckedProducts: safe };
 }
 

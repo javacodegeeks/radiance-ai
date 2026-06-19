@@ -1,5 +1,6 @@
 import { SafetyRulesRepository } from '../src/repositories/safetyRulesRepository';
 import { closeDb } from '../src/db';
+import { runMigrations } from '../src/migrate';
 
 const INITIAL_RULES = [
   // ── Retinoids (teratogenic) ─────────────────────────────────────────────────
@@ -30,6 +31,7 @@ const INITIAL_RULES = [
 ];
 
 async function seed(): Promise<void> {
+  await runMigrations();
   const repo = new SafetyRulesRepository();
   console.log(`Seeding ${INITIAL_RULES.length} safety rules...`);
 

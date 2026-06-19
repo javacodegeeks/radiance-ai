@@ -131,7 +131,6 @@ Based on the above, respond with the JSON object.`;
     model:       llmConfig.model,
     temperature: 0,
     max_tokens:  1024,
-    response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user',   content: userPrompt },
@@ -217,6 +216,11 @@ function buildStateUpdate(
     ...r.previousTreatments !== undefined && { previousTreatments: r.previousTreatments },
     ...r.goals              !== undefined && { goals:              r.goals },
   };
+
+  console.log(`[questioner] queryReady=${queryReady} profileComplete=${profileComplete} questions=${output.questions.length}`);
+  if (output.questions.length > 0) {
+    console.log(`[questioner] pending questions: ${output.questions.join(' | ')}`);
+  }
 
   return {
     profileComplete,

@@ -1,27 +1,10 @@
-version: '3.9'
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Radiance AI — full stack
-#
-# Default services (always start):
-#   postgres · mongodb · qdrant · litellm · ui
-#
-# Optional profile services:
-#   seed  → data-seed   (populate safety rules once)
-#   obf   → obf-seed    (import Open Beauty Facts product data)
-#
-# Quick start:
-#   1. cp .env.example .env  and fill in API keys
-#   2. docker-compose -f docker/docker-compose.yml up
-#   3. Open http://localhost:3000
-#
-# First-time seed (run once after postgres is healthy):
-#   docker-compose -f docker/docker-compose.yml --profile seed up data-seed
-# ─────────────────────────────────────────────────────────────────────────────
+version: "3.9"
 
 services:
 
-  # ── Infrastructure ──────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # Infrastructure
+  # ─────────────────────────────────────────────────────────────
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -30,12 +13,11 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
-      - '5434:5432'
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ../data/migrations:/docker-entrypoint-initdb.d
     healthcheck:
-      test: [ 'CMD-SHELL', 'pg_isready -U ${DB_USER:-postgres}' ]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -47,11 +29,11 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-mongo}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-mongo}
     ports:
-      - '27017:27017'
+      - "27017:27017"
     volumes:
       - mongodb_data:/data/db
     healthcheck:
-      test: [ 'CMD', 'mongosh', '--eval', 'db.runCommand({ ping: 1 })' ]
+      test: [ "CMD", "mongosh", "--eval", "db.runCommand({ ping: 1 })" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -59,12 +41,12 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.18.2
     ports:
-      - '6333:6333' # HTTP API
-      - '6334:6334' # gRPC
+      - "6333:6333"
+      - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: [ 'CMD-SHELL', 'bash -c "</dev/tcp/localhost/6333" 2>/dev/null || exit 1' ]
+      test: [ "CMD-SHELL", "bash -c '</dev/tcp/localhost/6333' 2>/dev/null || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -77,11 +59,14 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       XAI_API_KEY: ${XAI_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
+      SSL_VERIFY: "false"
+      PYTHONHTTPSVERIFY: "0"
+      CURL_CA_BUNDLE: ""
     ports:
-      - '4000:4000'
+      - "4000:4000"
     volumes:
       - ./litellm-config.yaml:/app/config.yaml
-    command: [ '--config', '/app/config.yaml', '--port', '4000' ]
+    command: [ "--config", "/app/config.yaml", "--port", "4000" ]
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,52 +75,48 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: [ 'CMD-SHELL', '/app/.venv/bin/python3 -c "import urllib.request; urllib.request.urlopen(\"http://localhost:4000/health/liveliness\")" 2>/dev/null || exit 1' ]
+      test: [ "CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')\"" ]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── Application ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # UI
+  # ─────────────────────────────────────────────────────────────
 
   ui:
     build:
-      context: .. # repo root — Dockerfile needs both ai/ and ui/
+      context: ..
       dockerfile: docker/Dockerfile.ui
     ports:
-      - '3000:3000'
+      - "3000:3000"
     environment:
-      # ── AI layer (in-process, no AI_BACKEND_URL needed) ────────────────────
-      # To point at a remote AI service instead, set AI_BACKEND_URL here.
-      AI_BACKEND_URL: ''
+      AI_BACKEND_URL: ""
 
-      # LiteLLM — uses Docker service name as hostname
       LITELLM_BASE_URL: http://litellm:4000/v1
       LITELLM_API_KEY: ${LITELLM_API_KEY:-sk-litellm-master}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
 
-      # Web search (Tavily — used by the Web Researcher agent)
       TAVILY_API_KEY: ${TAVILY_API_KEY}
 
-      # PostgreSQL
+      # IMPORTANT FIX: internal docker port must be 5432
       DB_HOST: postgres
-      DB_PORT: ${DB_PORT:-5434}
+      DB_PORT: 5432
       DB_NAME: ${DB_NAME:-cosmetic_rai}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
 
-      # MongoDB
       MONGO_HOST: mongodb
-      MONGO_PORT: ${MONGO_PORT:-27017}
+      MONGO_PORT: 27017
       MONGO_USER: ${MONGO_USER:-mongo}
       MONGO_PASSWORD: ${MONGO_PASSWORD:-mongo}
       MONGO_DB_NAME: ${MONGO_DB_NAME:-obf}
 
-      # Qdrant
       QDRANT_URL: http://qdrant:6333
 
-      # Embeddings
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       EMBEDDING_MODEL_DIMENSIONS: ${EMBEDDING_MODEL_DIMENSIONS:-1536}
+
     depends_on:
       litellm:
         condition: service_healthy
@@ -146,27 +127,29 @@ services:
       qdrant:
         condition: service_healthy
 
-  # ── One-shot seed runners (run with --profile seed / --profile obf) ─────────
+  # ─────────────────────────────────────────────────────────────
+  # Seeders
+  # ─────────────────────────────────────────────────────────────
 
   data-seed:
     build:
       context: ..
       dockerfile: docker/Dockerfile.data
-    profiles: [ 'seed' ]
+    profiles: [ "seed" ]
     environment:
       DB_HOST: postgres
-      DB_PORT: ${DB_PORT:-5434}
+      DB_PORT: 5432
       DB_NAME: ${DB_NAME:-cosmetic_rai}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
     depends_on:
       postgres:
         condition: service_healthy
-    restart: 'no'
+    restart: "no"
 
   obf-seed:
     image: mongo:7
-    profiles: [ 'obf' ]
+    profiles: [ "obf" ]
     depends_on:
       mongodb:
         condition: service_healthy
@@ -174,7 +157,7 @@ services:
       - ./obf-seed:/seed
     working_dir: /seed
     command: bash /seed/seed.sh
-    restart: 'no'
+    restart: "no"
 
 volumes:
   postgres_data:
