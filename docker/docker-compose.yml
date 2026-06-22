@@ -1,25 +1,23 @@
-version: '3.9'
-
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: 'pgvector/pgvector:pg16'
     environment:
       POSTGRES_DB: cosmetic_rai
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - '5432:5432'
+      - '5434:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ../data/migrations:/docker-entrypoint-initdb.d
+      - 'postgres_data:/var/lib/postgresql/data'
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres
       interval: 5s
       timeout: 5s
       retries: 5
-
   mongodb:
-    image: mongo:7
+    image: 'mongo:7'
     environment:
       MONGO_INITDB_DATABASE: obf
       MONGO_INITDB_ROOT_USERNAME: mongo
@@ -27,54 +25,63 @@ services:
     ports:
       - '27017:27017'
     volumes:
-      - mongodb_data:/data/db
+      - 'mongodb_data:/data/db'
     healthcheck:
-      test: ['CMD', 'mongosh', '--eval', 'db.runCommand({ ping: 1 })']
+      test:
+        - CMD
+        - mongosh
+        - '--eval'
+        - 'db.runCommand({ ping: 1 })'
       interval: 5s
       timeout: 5s
       retries: 5
-
-  obf-seed:
-    image: mongo:7
-    profiles: ["seed"]
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    volumes:
-      - ./obf-seed:/seed
-    working_dir: /seed
-    command: bash /seed/seed.sh
-
   qdrant:
-    image: qdrant/qdrant:v1.18.2
+    image: 'qdrant/qdrant:v1.18.2'
     ports:
-      - '6333:6333'    # HTTP API
-      - '6334:6334'    # gRPC
+      - '6333:6333'
+      - '6334:6334'
     volumes:
-      - qdrant_data:/qdrant/storage
-
+      - 'qdrant_data:/qdrant/storage'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - bash -c '</dev/tcp/localhost/6333' 2>/dev/null || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
   litellm:
-    image: ghcr.io/berriai/litellm:1.87.1
+    image: 'ghcr.io/berriai/litellm:1.87.1'
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      XAI_API_KEY: ${XAI_API_KEY}
-      GROQ_API_KEY: ${GROQ_API_KEY}
+      OPENAI_API_KEY: some_key
+      ANTHROPIC_API_KEY: some_key
+      GEMINI_API_KEY: some_key
+      XAI_API_KEY: some_key
+      GROQ_API_KEY: some_key
     ports:
       - '4000:4000'
     volumes:
-      - ./litellm-config.yaml:/app/config.yaml
-    command: ['--config', '/app/config.yaml', '--port', '4000']
+      - './litellm-config.yaml:/app/config.yaml'
+    command:
+      - '--config'
+      - /app/config.yaml
+      - '--port'
+      - '4000'
     depends_on:
       postgres:
         condition: service_healthy
       mongodb:
-        condition: service_healthy  
+        condition: service_healthy
       qdrant:
-        condition: service_started
-
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
 volumes:
-  postgres_data:
-  mongodb_data:
-  qdrant_data:
+  postgres_data: null
+  mongodb_data: null
+  qdrant_data: null

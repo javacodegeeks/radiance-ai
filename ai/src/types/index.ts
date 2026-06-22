@@ -14,7 +14,6 @@ export interface QueryContext {
 }
 
 export interface UserProfile {
-  sessionId: string;
   country?: string;
   skinType?: string;
   /** Normalised ingredient names the user is allergic to, e.g. 'fragrance', 'nut_allergy' */
@@ -23,9 +22,6 @@ export interface UserProfile {
   conditions?: string[];
   /** Stated cosmetic concerns: 'acne', 'dryness', 'hair_loss', etc. */
   concerns?: string[];
-  consentGiven: boolean;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 export interface Product {
@@ -80,19 +76,3 @@ export type AgentStep =
   | 'done'
   | 'error';
 
-export interface AgentState {
-  sessionId: string;
-  userQuery: string;
-  queryContext: Partial<QueryContext>;
-  userProfile: Partial<UserProfile>;
-  conversationHistory: Message[];
-  pendingQuestions: string[];
-  profileComplete: boolean;
-  webResults: Product[];
-  catalogResults: Product[];
-  safetyCheckedProducts: RecommendedProduct[];
-  finalRecommendations: RecommendedProduct[];
-  currentStep: AgentStep;
-  iterationCount: number;
-  error?: string;
-}

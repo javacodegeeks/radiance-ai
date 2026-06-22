@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { llmClient, llmConfig } from '../llm/client';
+import { chatCompletion, LlmMessage, stripJsonFences } from '../llm/client';
+import { QUESTIONER_SYSTEM } from '../llm/prompts';
+import { LlmCallError, SchemaParseError } from '../common/errors';
+import { FALLBACK_QUESTIONS } from '../config/profileQuestions';
 import { GraphStateType } from '../graph/state';
 
 // ─── Structured output schema ─────────────────────────────────────────────────
@@ -9,21 +12,21 @@ const QuestionerOutputSchema = z.object({
   questions: z.array(z.string()).max(3),
   /** Refined understanding of the user's specific issue */
   queryRefinement: z.object({
-    refinedIssue:       z.string().optional(),
-    bodyArea:           z.string().optional(),
-    severity:           z.enum(['mild', 'moderate', 'severe']).optional(),
-    duration:           z.string().optional(),
-    triggers:           z.array(z.string()).optional(),
-    previousTreatments: z.array(z.string()).optional(),
-    goals:              z.array(z.string()).optional(),
+    refinedIssue:       z.string().nullish(),
+    bodyArea:           z.string().nullish(),
+    severity:           z.enum(['mild', 'moderate', 'severe']).nullish(),
+    duration:           z.string().nullish(),
+    triggers:           z.array(z.string()).nullish(),
+    previousTreatments: z.array(z.string()).nullish(),
+    goals:              z.array(z.string()).nullish(),
   }),
   /** Profile fields extracted from the conversation */
   profileUpdates: z.object({
-    country:    z.string().optional(),
-    skinType:   z.string().optional(),
-    allergies:  z.array(z.string()).optional(),
-    conditions: z.array(z.string()).optional(),
-    concerns:   z.array(z.string()).optional(),
+    country:    z.string().nullish(),
+    skinType:   z.string().nullish(),
+    allergies:  z.array(z.string()).nullish(),
+    conditions: z.array(z.string()).nullish(),
+    concerns:   z.array(z.string()).nullish(),
   }),
   /** True when the issue is understood well enough to search for products */
   queryReady: z.boolean(),
@@ -37,14 +40,6 @@ type QuestionerOutput = z.infer<typeof QuestionerOutputSchema>;
 
 const CRITICAL_FIELDS: Array<keyof GraphStateType['userProfile']> = ['country', 'allergies'];
 const PREFERRED_FIELDS: Array<keyof GraphStateType['userProfile']> = ['skinType', 'conditions', 'concerns'];
-
-const FALLBACK_QUESTIONS: Record<string, string> = {
-  country:    'Which country are you in? (This helps us find products available near you.)',
-  allergies:  'Do you have any known ingredient allergies or sensitivities? (e.g. fragrance, nuts, preservatives — or "none")',
-  skinType:   'How would you describe your skin type? (e.g. oily, dry, combination, sensitive, normal)',
-  conditions: 'Are you pregnant, breastfeeding, or do you have any relevant skin conditions? (or "none")',
-  concerns:   'What is your main skin/hair concern right now?',
-};
 
 // ─── Agent ────────────────────────────────────────────────────────────────────
 
@@ -61,7 +56,11 @@ export async function questionerAgent(
 ): Promise<Partial<GraphStateType>> {
   try {
     return await runLlmQuestioner(state);
-  } catch {
+  } catch (err) {
+    const label = err instanceof LlmCallError    ? 'LLM API call failed'
+                : err instanceof SchemaParseError ? 'Response schema invalid'
+                : 'Unexpected error';
+    console.error(`[questioner] ${label} — falling back to static questions`, err);
     return runFallbackQuestioner(state);
   }
 }
@@ -85,39 +84,7 @@ async function runLlmQuestioner(
     concerns:   userProfile.concerns,
   });
 
-  const systemPrompt = `You are an expert cosmetic consultant. The user has a specific concern.
-You must respond with a valid JSON object matching the schema below — no markdown, no explanation.
-
-Schema:
-{
-  "questions": string[],          // 1-3 focused natural questions. Empty array [] if no more info needed.
-  "queryRefinement": {
-    "refinedIssue": string,       // Detailed description of the issue
-    "bodyArea": string,           // e.g. "face", "scalp", "hands"
-    "severity": "mild"|"moderate"|"severe",
-    "duration": string,           // e.g. "2 weeks", "several months"
-    "triggers": string[],
-    "previousTreatments": string[],
-    "goals": string[]             // e.g. ["reduce redness", "hydrate"]
-  },
-  "profileUpdates": {
-    "country": string,
-    "skinType": string,
-    "allergies": string[],        // Empty array means user confirmed no allergies
-    "conditions": string[],
-    "concerns": string[]
-  },
-  "queryReady": boolean,          // true when you understand the issue well enough to search
-  "profileComplete": boolean      // true when country AND allergies are known
-}
-
-Rules:
-- Priority 1: Understand the specific issue (bodyArea, severity, duration, triggers, goals)
-- Priority 2: Collect safety-critical profile fields (country, allergies) only when relevant
-- Ask at most 3 questions per turn
-- Set queryReady=true only when refinedIssue, bodyArea, and at least one goal are known
-- Set profileComplete=true only when country and allergies are both present in profileUpdates or already in the profile`;
-
+  console.log('[questioner] prompt=QUESTIONER_SYSTEM');
   const userPrompt = `User's Query: "${userQuery}"
 
 Existing Profile: ${profileSummary}
@@ -127,21 +94,24 @@ ${historyText || '(no history yet)'}
 
 Based on the above, respond with the JSON object.`;
 
-  const response = await llmClient.chat.completions.create({
-    model:       llmConfig.model,
-    temperature: 0,
-    max_tokens:  1024,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user',   content: userPrompt },
-    ],
-  });
+  const messages: LlmMessage[] = [
+    { role: 'system', content: QUESTIONER_SYSTEM },
+    { role: 'user',   content: userPrompt },
+  ];
 
-  const raw = response.choices[0]?.message?.content ?? '{}';
-  const output: QuestionerOutput = QuestionerOutputSchema.parse(JSON.parse(raw));
+  let raw: string;
+  try {
+    raw = await chatCompletion('questioner', messages);
+  } catch (err) {
+    throw new LlmCallError('questioner', 'LLM API call failed', err);
+  }
 
-  return buildStateUpdate(output, state);
+  try {
+    const output: QuestionerOutput = QuestionerOutputSchema.parse(JSON.parse(stripJsonFences(raw)));
+    return buildStateUpdate(output, state);
+  } catch (err) {
+    throw new SchemaParseError('questioner', 'LLM response failed schema validation', err);
+  }
 }
 
 // ─── Fallback path ────────────────────────────────────────────────────────────
@@ -192,31 +162,37 @@ function buildStateUpdate(
   const { p } = { p: output.profileUpdates };
 
   // Merge LLM-extracted profile fields over existing profile
+  // != null guards against both null and undefined (LLMs may return either for absent fields)
   const mergedProfile: Partial<GraphStateType['userProfile']> = {
-    ...p.country    !== undefined && { country:    p.country },
-    ...p.skinType   !== undefined && { skinType:   p.skinType },
-    ...p.allergies  !== undefined && { allergies:  p.allergies },
-    ...p.conditions !== undefined && { conditions: p.conditions },
-    ...p.concerns   !== undefined && { concerns:   p.concerns },
+    ...p.country    != null && { country:    p.country },
+    ...p.skinType   != null && { skinType:   p.skinType },
+    ...p.allergies  != null && { allergies:  p.allergies },
+    ...p.conditions != null && { conditions: p.conditions },
+    ...p.concerns   != null && { concerns:   p.concerns },
   };
 
   // Safety net: don't trust LLM's profileComplete if critical fields are absent
   const effectiveCountry    = p.country    ?? state.userProfile.country;
   const effectiveAllergies  = p.allergies  ?? state.userProfile.allergies;
-  const criticalFieldsPresent = !!effectiveCountry && effectiveAllergies !== undefined;
+  const criticalFieldsPresent = !!effectiveCountry && effectiveAllergies != null;
 
   const profileComplete = output.profileComplete && criticalFieldsPresent;
   const queryReady      = output.queryReady && !!(r.refinedIssue ?? state.queryContext.refinedIssue);
 
   const queryContext: Partial<GraphStateType['queryContext']> = {
-    ...r.refinedIssue       !== undefined && { refinedIssue:       r.refinedIssue },
-    ...r.bodyArea           !== undefined && { bodyArea:           r.bodyArea },
-    ...r.severity           !== undefined && { severity:           r.severity },
-    ...r.duration           !== undefined && { duration:           r.duration },
-    ...r.triggers           !== undefined && { triggers:           r.triggers },
-    ...r.previousTreatments !== undefined && { previousTreatments: r.previousTreatments },
-    ...r.goals              !== undefined && { goals:              r.goals },
+    ...r.refinedIssue       != null && { refinedIssue:       r.refinedIssue },
+    ...r.bodyArea           != null && { bodyArea:           r.bodyArea },
+    ...r.severity           != null && { severity:           r.severity },
+    ...r.duration           != null && { duration:           r.duration },
+    ...r.triggers           != null && { triggers:           r.triggers },
+    ...r.previousTreatments != null && { previousTreatments: r.previousTreatments },
+    ...r.goals              != null && { goals:              r.goals },
   };
+
+  console.log(`[questioner] queryReady=${queryReady} profileComplete=${profileComplete} questions=${output.questions.length}`);
+  if (output.questions.length > 0) {
+    console.log(`[questioner] pending questions: ${output.questions.join(' | ')}`);
+  }
 
   return {
     profileComplete,

@@ -1,0 +1,177 @@
+Radiance AI — Docker Commands
+==============================
+
+Run all commands from the repo root directory.
+Copy .env.example to .env and fill in your API keys before starting.
+
+
+ARCHITECTURE
+============
+radiance-ai/          ← backend (this repo) — Express API + AI agents
+  ai/                 ← MVC backend: server, controllers, services, agents
+    src/
+      server.ts                  ← Express entry point (port 3001)
+      controllers/chatController ← HTTP layer (thin)
+      services/chatService       ← session phases + graph orchestration
+      services/sessionStore      ← in-memory session store
+      agents/                    ← LangGraph agent nodes
+      graph/                     ← LangGraph workflow
+  data/               ← data layer (PostgreSQL, MongoDB, Qdrant)
+
+radiance-ai-frontend/ ← frontend (parallel folder) — standalone Next.js app
+  src/services/       ← radianceClient.ts → POST localhost:3001/api/chat
+
+Data flow:  browser → frontend:3000 → ai/server:3001/api/chat → LangGraph → DBs
+
+
+1. START FULL STACK
+-------------------
+Starts: postgres, mongodb, qdrant, litellm, ui
+UI will be available at http://localhost:3000
+
+    docker-compose -f docker/docker-compose.yml --env-file .env up -d
+
+
+2. SEED SAFETY RULES  (run once after first start)
+---------------------------------------------------
+Populates ingredient safety rules into PostgreSQL.
+Requires postgres to be healthy (wait ~10s after step 1).
+
+    docker-compose -f docker/docker-compose.yml --env-file .env --profile seed up --build data-seed
+
+
+3. SEED OPEN BEAUTY FACTS PRODUCTS  (optional, run once)
+---------------------------------------------------------
+Downloads and imports the Open Beauty Facts product catalogue into MongoDB.
+Warning: large download (~250 MB). Skipped automatically if data is up to date.
+
+    docker-compose -f docker/docker-compose.yml --env-file .env --profile obf up --build obf-seed
+
+    ## to add to vector store (run from /data directory):
+    ## cd data && EMBEDDING_MODEL=nomic-embed-text LITELLM_BASE_URL=http://localhost:4000/v1 LITELLM_API_KEY=sk-litellm-master npm run sync
+    ## Note: dimensions are auto-detected — no need to set EMBEDDING_MODEL_DIMENSIONS.
+    ## Switching embedding models? The Qdrant collection is recreated automatically.
+    
+
+
+OTHER USEFUL COMMANDS
+---------------------
+
+Stop all containers:
+    docker-compose -f docker/docker-compose.yml --env-file .env down
+
+View logs for a specific service (e.g. ui):
+    docker-compose -f docker/docker-compose.yml --env-file .env logs -f ui
+
+Check status of all containers:
+    docker-compose -f docker/docker-compose.yml --env-file .env ps
+
+Rebuild the ui image after code changes:
+    docker-compose -f docker/docker-compose.yml --env-file .env build ui
+    docker-compose -f docker/docker-compose.yml --env-file .env up -d ui
+
+
+LOCAL DEV (without Docker)
+===========================
+
+Run infrastructure in Docker, app code natively.
+Prerequisites: Node.js 20+, npm.
+
+1. START INFRASTRUCTURE ONLY
+-----------------------------
+Starts only the backing services (no ui container):
+
+    docker-compose -f docker/docker-compose.yml --env-file .env up -d postgres mongodb qdrant litellm
+
+    docker-compose -f docker/docker-compose.yml --env-file .env down -v --remove-orphans
+
+
+2. CONFIGURE ENVIRONMENT
+-------------------------
+Copy and fill in your API keys:
+
+    cp .env.example .env
+
+Then set these local connection values in .env:
+
+    DB_HOST=localhost
+    DB_PORT=5434          # matches the remapped port in docker-compose
+    MONGODB_URI=mongodb://localhost:27017/cosmetics
+    QDRANT_URL=http://localhost:6333
+    LITELLM_BASE_URL=http://localhost:4000/v1
+    AI_BACKEND_URL=       # leave empty — ui calls ai layer in-process
+
+
+3. BUILD THE AI LAYER  (required before running ui)
+----------------------------------------------------
+The ui depends on a compiled file: reference to the ai package.
+Run once, and again any time you change code under /ai:
+
+    cd ai && npm install && npm run build
+
+
+4. INSTALL AND RUN THE UI
+--------------------------
+    cd ui
+    npm install
+    npm run dev
+    # App available at http://localhost:3000
+
+Shortcut — rebuild ai and start ui dev server:
+    cd ui && npm install && npm run dev
+
+    cd ui && npm install && npm run dev:setup && npm run dev
+
+
+5. SEED DATABASE  (run once after first infra start)
+-----------------------------------------------------
+    cd data && npm install && npm run seed
+
+
+6. RUN TESTS
+------------
+    cd ai  && npm test
+    cd data && npm test
+
+
+docker-compose -f docker/docker-compose.yml --env-file .env up -d litellm
+
+
+LOCAL DEV — NEW ARCHITECTURE (REST API + separate frontend)
+============================================================
+
+Run infrastructure in Docker, backend + frontend natively.
+
+1. START INFRASTRUCTURE
+------------------------
+    docker-compose -f docker/docker-compose.yml --env-file .env up -d postgres mongodb qdrant litellm
+
+
+2. START THE AI/BACKEND SERVER  (port 3001)
+--------------------------------------------
+No separate build step needed — ts-node-dev compiles on the fly.
+
+    cd ai && npm install && npm run server
+    # API available at http://localhost:3001
+    # Health check: curl http://localhost:3001/health
+
+
+3. START THE FRONTEND  (port 3000, separate terminal)
+------------------------------------------------------
+    cd ../radiance-ai-frontend    # one level up from radiance-ai/
+    npm install
+    npm run dev
+    # App available at http://localhost:3000
+
+
+4. SMOKE TEST THE API DIRECTLY
+-------------------------------
+    curl -X POST http://localhost:3001/api/chat \
+      -H "Content-Type: application/json" \
+      -d '{"sessionId":"test-123","message":"I have dry flaky skin"}'
+
+
+5. RUN TESTS
+------------
+    cd ai   && npm test
+    cd data && npm test
