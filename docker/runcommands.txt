@@ -1,0 +1,7 @@
+## Docker commands
+
+### Remove orphans containers and volumes
+docker-compose -f docker-compose.yml down -v --remove-orphans
+
+#### Bring up the required infrastructure
+docker-compose -f docker-compose.yml up -d postgres mongodb qdrant litellm

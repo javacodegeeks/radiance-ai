@@ -1,72 +1,71 @@
-version: "3.9"
-
 services:
-
-  # ─────────────────────────────────────────────────────────────
-  # Infrastructure
-  # ─────────────────────────────────────────────────────────────
-
   postgres:
-    image: pgvector/pgvector:pg16
+    image: 'pgvector/pgvector:pg16'
     environment:
-      POSTGRES_DB: ${DB_NAME:-cosmetic_rai}
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: cosmetic_rai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
-      - "5434:5432"
+      - '5434:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - 'postgres_data:/var/lib/postgresql/data'
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}" ]
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres
       interval: 5s
       timeout: 5s
       retries: 5
-
   mongodb:
-    image: mongo:7
+    image: 'mongo:7'
     environment:
-      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-obf}
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-mongo}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-mongo}
+      MONGO_INITDB_DATABASE: obf
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: mongo
     ports:
-      - "27017:27017"
+      - '27017:27017'
     volumes:
-      - mongodb_data:/data/db
+      - 'mongodb_data:/data/db'
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.runCommand({ ping: 1 })" ]
+      test:
+        - CMD
+        - mongosh
+        - '--eval'
+        - 'db.runCommand({ ping: 1 })'
       interval: 5s
       timeout: 5s
       retries: 5
-
   qdrant:
-    image: qdrant/qdrant:v1.18.2
+    image: 'qdrant/qdrant:v1.18.2'
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - '6333:6333'
+      - '6334:6334'
     volumes:
-      - qdrant_data:/qdrant/storage
+      - 'qdrant_data:/qdrant/storage'
     healthcheck:
-      test: [ "CMD-SHELL", "bash -c '</dev/tcp/localhost/6333' 2>/dev/null || exit 1" ]
+      test:
+        - CMD-SHELL
+        - bash -c '</dev/tcp/localhost/6333' 2>/dev/null || exit 1
       interval: 10s
       timeout: 5s
       retries: 5
-
   litellm:
-    image: ghcr.io/berriai/litellm:1.87.1
+    image: 'ghcr.io/berriai/litellm:1.87.1'
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      XAI_API_KEY: ${XAI_API_KEY}
-      GROQ_API_KEY: ${GROQ_API_KEY}
-      SSL_VERIFY: "false"
-      PYTHONHTTPSVERIFY: "0"
-      CURL_CA_BUNDLE: ""
+      OPENAI_API_KEY: some_key
+      ANTHROPIC_API_KEY: some_key
+      GEMINI_API_KEY: some_key
+      XAI_API_KEY: some_key
+      GROQ_API_KEY: some_key
     ports:
-      - "4000:4000"
+      - '4000:4000'
     volumes:
-      - ./litellm-config.yaml:/app/config.yaml
-    command: [ "--config", "/app/config.yaml", "--port", "4000" ]
+      - './litellm-config.yaml:/app/config.yaml'
+    command:
+      - '--config'
+      - /app/config.yaml
+      - '--port'
+      - '4000'
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,91 +74,14 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')\"" ]
+      test:
+        - CMD-SHELL
+        - >-
+          python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # ─────────────────────────────────────────────────────────────
-  # UI
-  # ─────────────────────────────────────────────────────────────
-
-  ui:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.ui
-    ports:
-      - "3000:3000"
-    environment:
-      AI_BACKEND_URL: ""
-
-      LITELLM_BASE_URL: http://litellm:4000/v1
-      LITELLM_API_KEY: ${LITELLM_API_KEY:-sk-litellm-master}
-      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
-
-      TAVILY_API_KEY: ${TAVILY_API_KEY}
-
-      # IMPORTANT FIX: internal docker port must be 5432
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-cosmetic_rai}
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-
-      MONGO_HOST: mongodb
-      MONGO_PORT: 27017
-      MONGO_USER: ${MONGO_USER:-mongo}
-      MONGO_PASSWORD: ${MONGO_PASSWORD:-mongo}
-      MONGO_DB_NAME: ${MONGO_DB_NAME:-obf}
-
-      QDRANT_URL: http://qdrant:6333
-
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
-      EMBEDDING_MODEL_DIMENSIONS: ${EMBEDDING_MODEL_DIMENSIONS:-1536}
-
-    depends_on:
-      litellm:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      mongodb:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
-
-  # ─────────────────────────────────────────────────────────────
-  # Seeders
-  # ─────────────────────────────────────────────────────────────
-
-  data-seed:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.data
-    profiles: [ "seed" ]
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-cosmetic_rai}
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
-  obf-seed:
-    image: mongo:7
-    profiles: [ "obf" ]
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    volumes:
-      - ./obf-seed:/seed
-    working_dir: /seed
-    command: bash /seed/seed.sh
-    restart: "no"
-
 volumes:
-  postgres_data:
-  mongodb_data:
-  qdrant_data:
+  postgres_data: null
+  mongodb_data: null
+  qdrant_data: null

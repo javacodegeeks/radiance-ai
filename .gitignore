@@ -50,3 +50,5 @@ openbeautyfacts-mongodbdump.gz
 openbeautyfacts-mongodbdump.gz.etag
 
 .next/
+
+data/.cache/

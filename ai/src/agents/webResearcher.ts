@@ -1,7 +1,9 @@
 import { TavilySearch } from '@langchain/tavily';
 import { GraphStateType } from '../graph/state';
 import { Product } from '../types';
-import { llmClient, llmConfig } from '../llm/client';
+import { chatCompletion } from '../llm/client';
+import { WEB_RESEARCHER_BRAND_SYSTEM } from '../llm/prompts';
+import { LlmCallError } from '../common/errors';
 
 const MAX_RESULTS = 10;
 
@@ -71,23 +73,11 @@ async function extractBrand(content: string): Promise<string | null> {
   }
 
   try {
-    const response = await llmClient.chat.completions.create({
-      model:       llmConfig.model,
-      temperature: 0.0,
-      max_tokens:  50,
-      messages: [
-        {
-          role:    'system',
-          content: 'You are a cosmetics brand extraction assistant. Extract only the brand name from the provided page content and return that brand name as plain text.',
-        },
-        {
-          role:    'user',
-          content: `Extract the cosmetic brand from the following web page content. If no brand can be determined, reply with Unknown.\n\n${normalizedContent}`,
-        },
-      ],
-    });
-
-    const rawText = String(response?.choices?.[0]?.message?.content ?? '').trim();
+    console.log('[webResearcher] prompt=WEB_RESEARCHER_BRAND_SYSTEM');
+    const rawText = (await chatCompletion('webResearcher', [
+      { role: 'system', content: WEB_RESEARCHER_BRAND_SYSTEM },
+      { role: 'user',   content: `Extract the cosmetic brand from the following web page content. If no brand can be determined, reply with Unknown.\n\n${normalizedContent}` },
+    ])).trim();
     const brand = rawText.replace(/^['"]|['"]$/g, '').trim();
 
     if (!brand || /^unknown$/i.test(brand) || /(no brand|unable to determine|n\/a)/i.test(brand)) {
@@ -96,7 +86,8 @@ async function extractBrand(content: string): Promise<string | null> {
 
     return brand;
   } catch (error) {
-    console.error('[webResearcher] Brand extraction failed:', error);
+    const e = new LlmCallError('webResearcher', 'Brand extraction failed', error);
+    console.error(`[webResearcher] ${e.name}: ${e.message}`, error);
     return null;
   }
 }

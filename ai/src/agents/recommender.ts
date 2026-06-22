@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import { llmClient, llmConfig } from '../llm/client';
+import { chatCompletion, LlmMessage, stripJsonFences } from '../llm/client';
+import { RECOMMENDER_SYSTEM } from '../llm/prompts';
+import { LlmCallError, SchemaParseError } from '../common/errors';
 import { GraphStateType } from '../graph/state';
 import { RecommendedProduct } from '../types';
 
@@ -79,7 +81,10 @@ export async function recommenderAgent(
     console.log(`[recommender] generated ${explained.length} recommendation(s)`);
     return { finalRecommendations: explained, currentStep: 'done' };
   } catch (err) {
-    console.error('[recommender] LLM enrichment failed — using unenriched results:', err);
+    const label = err instanceof LlmCallError    ? 'LLM API call failed'
+                : err instanceof SchemaParseError ? 'Response schema invalid'
+                : 'Unexpected error';
+    console.error(`[recommender] ${label} — using unenriched results`, err);
     return { finalRecommendations: withNotes, currentStep: 'done' };
   }
 }
@@ -113,31 +118,7 @@ async function enrichWithLlm(
     ? excluded.map(p => `"${p.name}" — ${p.safetyNotes ?? 'unsafe'}`).join('\n')
     : '(none)';
 
-  const systemPrompt = `You are an expert cosmetic consultant. Given a user's skin/hair concern and a ranked list of products, write personalised explanations for each recommendation.
-Respond with a valid JSON object — no markdown, no extra text.
-
-Schema:
-{
-  "recommendations": [
-    {
-      "name": string,             // exact product name from the list
-      "relevanceToQuery": string, // 1-2 sentences on why this product suits the user's issue
-      "reasoning": string,        // ingredient/formulation rationale (2-3 sentences)
-      "usageTips": string[],      // 2-3 actionable tips (e.g. "Apply to damp skin morning and evening")
-      "safetyNotes": string       // optional — only include if there are cautions to flag
-    }
-  ],
-  "excludedProducts": [
-    { "name": string, "reason": string }  // why unsafe products were excluded
-  ]
-}
-
-Rules:
-- Write in second person ("your skin", "you should")
-- Keep relevanceToQuery focused on the user's stated goals
-- usageTips must be concrete and actionable
-- Only include safetyNotes for caution-status products`;
-
+  console.log('[recommender] prompt=RECOMMENDER_SYSTEM');
   const userPrompt = `User's concern: "${issue}"
 Goals: ${goals}
 User profile: ${profileSummary}
@@ -150,20 +131,24 @@ ${excludedList}
 
 Write personalised explanations for each recommended product.`;
 
-  const response = await llmClient.chat.completions.create({
-    model:       llmConfig.model,
-    temperature: 0.3,
-    max_tokens:  2048,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user',   content: userPrompt },
-    ],
-  });
+  const messages: LlmMessage[] = [
+    { role: 'system', content: RECOMMENDER_SYSTEM },
+    { role: 'user',   content: userPrompt },
+  ];
 
-  const raw = response.choices[0]?.message?.content ?? '{}';
-  const output: RecommenderOutput = RecommenderOutputSchema.parse(JSON.parse(raw));
+  let raw: string;
+  try {
+    raw = await chatCompletion('recommender', messages);
+  } catch (err) {
+    throw new LlmCallError('recommender', 'LLM API call failed', err);
+  }
 
-  return mergeExplanations(top, output);
+  try {
+    const output: RecommenderOutput = RecommenderOutputSchema.parse(JSON.parse(stripJsonFences(raw)));
+    return mergeExplanations(top, output);
+  } catch (err) {
+    throw new SchemaParseError('recommender', 'LLM response failed schema validation', err);
+  }
 }
 
 // ─── Merge helper ─────────────────────────────────────────────────────────────
