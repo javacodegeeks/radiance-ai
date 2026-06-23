@@ -30,9 +30,9 @@ function buildMongoIdFilter(ids: string[]) {
 
 function toProduct(r: ProductDoc): Product {
   return {
-    name:                String(r['product_name'] || r['product_name_en'] || 'Unknown Product'),
+    name:                String(r['product_name'] || r['product_name_en'] || r['generic_name'] || r['generic_name_en'] || 'Unknown Product'),
     brand:               String(r['brands'] || 'Unknown Brand'),
-    inci:                toArray(r['ingredients']),
+    inci:                toArray(r['ingredients_text'] || r['ingredients_text_en']),
     categories:          toArray(r['categories']),
     countryAvailability: toArray(r['countries']),
     cachedAt:            r['cached_at'] instanceof Date ? r['cached_at'] : undefined,

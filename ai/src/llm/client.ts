@@ -12,9 +12,9 @@ const MODEL = process.env.LLM_MODEL!;
 
 const PRESETS = {
   /** Deterministic JSON extraction — clarify user concern and profile. */
-  questioner:    { model: MODEL, temperature: 0,   max_tokens: 1024, response_format: { type: 'json_object' } },
+  questioner:    { model: MODEL, temperature: 0,   max_tokens: 1024 },
   /** Slightly creative — personalised product explanations. */
-  recommender:   { model: MODEL, temperature: 0.3, max_tokens: 2048, response_format: { type: 'json_object' } },
+  recommender:   { model: MODEL, temperature: 0.3, max_tokens: 2048 },
   /** Short deterministic extraction — brand name from web content. */
   webResearcher: { model: MODEL, temperature: 0,   max_tokens: 50   },
   /** Short deterministic extraction — INCI ingredient list from query. */
