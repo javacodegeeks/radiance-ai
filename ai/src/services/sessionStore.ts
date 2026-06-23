@@ -1,8 +1,11 @@
 /**
- * In-memory session store.
- * Swap the Map for Redis or a DB client without changing any other file —
- * the interface (getSession / setSession / createSession) is the only contract.
+ * Postgres-backed session store.
+ * Persists session state to user_sessions and conversation turns to
+ * conversation_history. The interface (getSession / setSession / createSession)
+ * is the only contract — callers are unaware of the storage backend.
  */
+
+import { getDb } from '../infra/db';
 
 export interface CollectedProfile {
   userQuery: string;
@@ -33,24 +36,71 @@ export interface Session {
   createdAt: Date;
 }
 
-const sessions = new Map<string, Session>();
+// ─── Read ─────────────────────────────────────────────────────────────────────
 
-export function getSession(id: string): Session | undefined {
-  return sessions.get(id);
+export async function getSession(id: string): Promise<Session | undefined> {
+  const db = getDb();
+  const { rows } = await db.query<{
+    session_id: string;
+    phase: SessionPhase;
+    profile: CollectedProfile | null;
+    questioning: QuestioningState | null;
+    created_at: Date;
+  }>(
+    `SELECT session_id, phase, profile, questioning, created_at
+     FROM user_sessions WHERE session_id = $1`,
+    [id],
+  );
+  if (!rows.length) return undefined;
+  const row = rows[0];
+  return {
+    id:          row.session_id,
+    phase:       row.phase,
+    profile:     row.profile,
+    questioning: row.questioning,
+    createdAt:   row.created_at,
+  };
 }
 
-export function setSession(id: string, session: Session): void {
-  sessions.set(id, session);
+// ─── Write ────────────────────────────────────────────────────────────────────
+
+export async function setSession(id: string, session: Session): Promise<void> {
+  const db = getDb();
+  await db.query(
+    `INSERT INTO user_sessions (session_id, phase, profile, questioning)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (session_id) DO UPDATE
+       SET phase       = EXCLUDED.phase,
+           profile     = EXCLUDED.profile,
+           questioning = EXCLUDED.questioning,
+           updated_at  = NOW()`,
+    [id, session.phase, JSON.stringify(session.profile), JSON.stringify(session.questioning)],
+  );
 }
 
-export function createSession(id: string): Session {
+export async function createSession(id: string): Promise<Session> {
   const session: Session = {
     id,
-    phase: 'init',
-    profile: null,
+    phase:       'init',
+    profile:     null,
     questioning: null,
-    createdAt: new Date(),
+    createdAt:   new Date(),
   };
-  sessions.set(id, session);
+  await setSession(id, session);
   return session;
+}
+
+// ─── Conversation history ─────────────────────────────────────────────────────
+
+export async function appendMessage(
+  sessionId: string,
+  role: 'user' | 'assistant',
+  content: string,
+): Promise<void> {
+  const db = getDb();
+  await db.query(
+    `INSERT INTO conversation_history (session_id, role, content)
+     VALUES ($1, $2, $3)`,
+    [sessionId, role, content],
+  );
 }

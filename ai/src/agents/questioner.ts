@@ -177,7 +177,13 @@ function buildStateUpdate(
   const criticalFieldsPresent = !!effectiveCountry && effectiveAllergies != null;
 
   const profileComplete = output.profileComplete && criticalFieldsPresent;
-  const queryReady      = output.queryReady && !!(r.refinedIssue ?? state.queryContext.refinedIssue);
+
+  // Safety net: if profile is complete and we already have conversation history
+  // (at least 2 Q&A turns = 4 messages), treat the query as ready regardless of
+  // what the LLM returns — prevents weaker models from looping indefinitely.
+  const sufficientHistory = state.conversationHistory.length >= 4;
+  const queryReady = (output.queryReady || (profileComplete && sufficientHistory))
+    && !!(r.refinedIssue ?? state.queryContext.refinedIssue);
 
   const queryContext: Partial<GraphStateType['queryContext']> = {
     ...r.refinedIssue       != null && { refinedIssue:       r.refinedIssue },

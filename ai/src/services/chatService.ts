@@ -11,6 +11,7 @@ import {
   getSession,
   setSession,
   createSession,
+  appendMessage,
   QuestioningState,
 } from './sessionStore';
 
@@ -49,6 +50,12 @@ export interface ChatResponse {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const GREETING_RE = /^(hi+|hello+|hey+|yo|howdy|hola|sup|greetings?|good\s*(morning|afternoon|evening))[!.,?]?$/i;
+
+function isGreeting(text: string): boolean {
+  return GREETING_RE.test(text.trim());
+}
+
 function msg(role: ChatMessage['role'], content: string): ChatMessage {
   return { id: uuidv4(), role, content, timestamp: new Date().toISOString() };
 }
@@ -82,23 +89,32 @@ function graphErrorResponse(sessionId: string, err: unknown): ChatResponse {
   return { messages: [msg('assistant', text)], phase: 'error' };
 }
 
+async function reply(sessionId: string, content: string): Promise<ChatMessage> {
+  await appendMessage(sessionId, 'assistant', content);
+  return msg('assistant', content);
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export async function processMessage(sessionId: string, message: string): Promise<ChatResponse> {
-  let session = getSession(sessionId) ?? createSession(sessionId);
+  let session = await getSession(sessionId) ?? await createSession(sessionId);
   console.log(`[chatService] session=${sessionId} phase=${session.phase}`);
+
+  await appendMessage(sessionId, 'user', message);
 
   // ── INIT ───────────────────────────────────────────────────────────────────
   if (session.phase === 'init') {
-    setSession(sessionId, {
+    if (isGreeting(message)) {
+      const text = "Hi! What skin or hair concern can I help you with today?";
+      return { messages: [await reply(sessionId, text)], phase: 'collecting' };
+    }
+    await setSession(sessionId, {
       ...session,
       phase: 'collecting',
       profile: { userQuery: message, questionIndex: 0, answers: {} },
     });
-    return {
-      messages: [msg('assistant', `Got it. A few quick questions to personalise your recommendations.\n\n${PROFILE_QUESTIONS[0].text}`)],
-      phase: 'collecting',
-    };
+    const text = `Got it. A few quick questions to personalise your recommendations.\n\n${PROFILE_QUESTIONS[0].text}`;
+    return { messages: [await reply(sessionId, text)], phase: 'collecting' };
   }
 
   // ── COLLECTING ─────────────────────────────────────────────────────────────
@@ -109,11 +125,11 @@ export async function processMessage(sessionId: string, message: string): Promis
     const nextIndex  = questionIndex + 1;
 
     if (nextIndex < PROFILE_QUESTIONS.length) {
-      setSession(sessionId, {
+      await setSession(sessionId, {
         ...session,
         profile: { userQuery, questionIndex: nextIndex, answers: updAnswers },
       });
-      return { messages: [msg('assistant', PROFILE_QUESTIONS[nextIndex].text)], phase: 'collecting' };
+      return { messages: [await reply(sessionId, PROFILE_QUESTIONS[nextIndex].text)], phase: 'collecting' };
     }
 
     const existingProfile = {
@@ -123,14 +139,14 @@ export async function processMessage(sessionId: string, message: string): Promis
       conditions: parseList(updAnswers['conditions'] ?? ''),
     };
 
-    setSession(sessionId, { ...session, phase: 'processing' });
-
+    await setSession(sessionId, { ...session, phase: 'processing' });
     console.log(`[chatService] session=${sessionId} invoking graph`);
+
     let graphResult;
     try {
       graphResult = await run({ sessionId, userQuery, existingProfile });
     } catch (err) {
-      setSession(sessionId, { ...session, phase: 'error' });
+      await setSession(sessionId, { ...session, phase: 'error' });
       return graphErrorResponse(sessionId, err);
     }
     const recs = (graphResult.finalRecommendations ?? []) as RecommendationResult[];
@@ -144,12 +160,14 @@ export async function processMessage(sessionId: string, message: string): Promis
         questionIndex: 0,
         conversationHistory: [],
       };
-      setSession(sessionId, { ...session, phase: 'questioning', questioning: questioningState });
-      return { messages: [msg('assistant', graphResult.pendingQuestions[0])], phase: 'questioning' };
+      await setSession(sessionId, { ...session, phase: 'questioning', questioning: questioningState });
+      return { messages: [await reply(sessionId, graphResult.pendingQuestions[0])], phase: 'questioning' };
     }
 
-    setSession(sessionId, { ...session, phase: 'done' });
-    return recs.length === 0 ? noProductsFound() : recommendationsResponse(recs);
+    await setSession(sessionId, { ...session, phase: 'done' });
+    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs);
+    await appendMessage(sessionId, 'assistant', response.messages[0].content);
+    return response;
   }
 
   // ── QUESTIONING ────────────────────────────────────────────────────────────
@@ -167,41 +185,55 @@ export async function processMessage(sessionId: string, message: string): Promis
     const nextIndex = questionIndex + 1;
 
     if (nextIndex < pendingQuestions.length) {
-      setSession(sessionId, {
+      await setSession(sessionId, {
         ...session,
         questioning: { ...session.questioning, questionIndex: nextIndex, conversationHistory: updatedHistory },
       });
-      return { messages: [msg('assistant', pendingQuestions[nextIndex])], phase: 'questioning' };
+      return { messages: [await reply(sessionId, pendingQuestions[nextIndex])], phase: 'questioning' };
     }
 
-    setSession(sessionId, { ...session, phase: 'processing' });
+    await setSession(sessionId, { ...session, phase: 'processing' });
     console.log(`[chatService] session=${sessionId} invoking graph (questioning complete)`);
+
     let graphResult;
     try {
       graphResult = await run({ sessionId, userQuery, existingProfile, conversationHistory: updatedHistory });
     } catch (err) {
-      setSession(sessionId, { ...session, phase: 'error' });
+      await setSession(sessionId, { ...session, phase: 'error' });
       return graphErrorResponse(sessionId, err);
     }
     const recs = (graphResult.finalRecommendations ?? []) as RecommendationResult[];
     console.log(`[chatService] session=${sessionId} graph done recs=${recs.length}`);
 
-    setSession(sessionId, { ...session, phase: 'done' });
-    return recs.length === 0 ? noProductsFound() : recommendationsResponse(recs);
+    if (graphResult.pendingQuestions && graphResult.pendingQuestions.length > 0) {
+      const nextQuestioningState: QuestioningState = {
+        userQuery,
+        existingProfile,
+        pendingQuestions: graphResult.pendingQuestions,
+        questionIndex: 0,
+        conversationHistory: updatedHistory,
+      };
+      await setSession(sessionId, { ...session, phase: 'questioning', questioning: nextQuestioningState });
+      return { messages: [await reply(sessionId, graphResult.pendingQuestions[0])], phase: 'questioning' };
+    }
+
+    await setSession(sessionId, { ...session, phase: 'done' });
+    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs);
+    await appendMessage(sessionId, 'assistant', response.messages[0].content);
+    return response;
   }
 
   // ── DONE / ERROR — restart ─────────────────────────────────────────────────
   if (session.phase === 'done' || session.phase === 'error') {
-    setSession(sessionId, {
-      ...createSession(sessionId),
+    const newSession = await createSession(sessionId);
+    await setSession(sessionId, {
+      ...newSession,
       phase: 'collecting',
       profile: { userQuery: message, questionIndex: 0, answers: {} },
     });
-    return {
-      messages: [msg('assistant', `Starting a new search. First question:\n\n${PROFILE_QUESTIONS[0].text}`)],
-      phase: 'collecting',
-    };
+    const text = `Starting a new search. First question:\n\n${PROFILE_QUESTIONS[0].text}`;
+    return { messages: [await reply(sessionId, text)], phase: 'collecting' };
   }
 
-  return { messages: [msg('assistant', 'Tell me about your skin or hair concern to get started.')], phase: 'collecting' };
+  return { messages: [await reply(sessionId, 'Tell me about your skin or hair concern to get started.')], phase: 'collecting' };
 }
