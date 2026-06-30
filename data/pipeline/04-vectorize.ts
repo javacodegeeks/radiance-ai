@@ -13,6 +13,7 @@ import { v5 as uuidv5 } from 'uuid';
 import { Schemas } from '@qdrant/js-client-rest';
 import { getDb, closeDb } from '../src/infra/mongo';
 import { qdrant, generateEmbedding } from '../src/infra/qdrant';
+import { normalizeCountries } from '../src/common/countryNormalizer';
 
 const UUID_NAMESPACE  = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 const COLLECTION_NAME = 'products';
@@ -87,7 +88,10 @@ export async function vectorizeProducts(limit = 0): Promise<void> {
   for await (const product of cursor) {
     const p = product as Record<string, unknown>;
     batch.push(
-      generateEmbedding(buildSearchableText(p)).then((vector): QdrantPoint => ({
+      Promise.all([
+        generateEmbedding(buildSearchableText(p)),
+        normalizeCountries(String(p['countries'] ?? '')),
+      ]).then(([vector, countries]): QdrantPoint => ({
         id:      toQdrantId(p['_id'] ?? p['code']),
         vector,
         payload: {
@@ -97,7 +101,7 @@ export async function vectorizeProducts(limit = 0): Promise<void> {
           brands:       p['brands'],
           categories:   p['categories'],
           ingredients:  p['ingredients_text'] ?? p['ingredients_text_en'],
-          countries:    p['countries'],
+          countries,
           product_type: p['product_type'],
           completeness: p['completeness'],
         },

@@ -49,7 +49,6 @@ Warning: large download (~250 MB). Skipped automatically if data is up to date.
 
     ## to add to vector store (run from /data directory):
     ## cd data && EMBEDDING_MODEL=nomic-embed-text LITELLM_BASE_URL=http://localhost:4000/v1 LITELLM_API_KEY=sk-litellm-master npm run sync
-    ## Note: dimensions are auto-detected — no need to set EMBEDDING_MODEL_DIMENSIONS.
     ## Switching embedding models? The Qdrant collection is recreated automatically.
     
 

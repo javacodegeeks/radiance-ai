@@ -1,4 +1,4 @@
-CREATE TABLE user_sessions (
+CREATE TABLE IF NOT EXISTS user_sessions (
   id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   session_id     VARCHAR(255) UNIQUE NOT NULL,
   country        VARCHAR(100),
@@ -12,7 +12,7 @@ CREATE TABLE user_sessions (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE conversation_history (
+CREATE TABLE IF NOT EXISTS conversation_history (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   session_id  VARCHAR(255) NOT NULL REFERENCES user_sessions (session_id) ON DELETE CASCADE,
   role        VARCHAR(20)  NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
@@ -20,5 +20,5 @@ CREATE TABLE conversation_history (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_user_sessions_session_id      ON user_sessions (session_id);
-CREATE INDEX idx_conversation_history_session  ON conversation_history (session_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_session_id      ON user_sessions (session_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_history_session  ON conversation_history (session_id);
