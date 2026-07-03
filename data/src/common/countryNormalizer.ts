@@ -14,6 +14,9 @@
  *   "Helvetia" → calls LLM → ["CH"] (if LLM can identify it)
  */
 
+import fs from 'fs';
+import path from 'path';
+
 // ISO 3166-1 alpha-2 country codes mapped by name (in English)
 const COUNTRY_NAME_TO_CODE: Record<string, string> = {
   // A
@@ -87,7 +90,6 @@ const COUNTRY_NAME_TO_CODE: Record<string, string> = {
   taiwan: 'TW', tajikistan: 'TJ', tanzania: 'TZ', thailand: 'TH', 'timor-leste': 'TL',
   togo: 'TG', tokelau: 'TK', tonga: 'TO', 'trinidad and tobago': 'TT', tunisia: 'TN',
   turkey: 'TR', turkmenistan: 'TM', 'turks and caicos islands': 'TC', tuvalu: 'TV',
-  'twain': 'TW',
   // U
   uganda: 'UG', ukraine: 'UA', 'united arab emirates': 'AE', 'united kingdom': 'GB', 'united states': 'US',
   uruguay: 'UY', uzbekistan: 'UZ',
@@ -149,9 +151,45 @@ const VALID_COUNTRY_CODES = new Set([
   ...ALL_WORLD_CODES,
 ]);
 
+const CACHE_DIR = path.join(__dirname, '..', '..', '.cache');
+const LLM_COUNTRY_CACHE_FILE = path.join(CACHE_DIR, 'llm-country-cache.json');
+
+function loadLlmCountryCacheFromFile(cacheFile = LLM_COUNTRY_CACHE_FILE): Map<string, string | null> {
+  try {
+    if (!fs.existsSync(cacheFile)) {
+      return new Map();
+    }
+
+    const raw = fs.readFileSync(cacheFile, 'utf8').trim();
+    if (!raw) {
+      return new Map();
+    }
+
+    const parsed = JSON.parse(raw) as Record<string, string | null>;
+    return new Map(Object.entries(parsed));
+  } catch (err) {
+    console.warn(`[countryNormalizer] Could not read LLM country cache: ${err instanceof Error ? err.message : String(err)}`);
+    return new Map();
+  }
+}
+
+function persistLlmCountryCacheToFile(cache: Map<string, string | null>, cacheFile = LLM_COUNTRY_CACHE_FILE): void {
+  try {
+    fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+    fs.writeFileSync(cacheFile, JSON.stringify(Object.fromEntries(cache), null, 2));
+  } catch (err) {
+    console.warn(`[countryNormalizer] Could not write LLM country cache: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 // Cache for LLM-identified country codes to minimize API calls
 // Maps normalized country name → ISO code (or null if unrecognized)
-const llmCountryCache = new Map<string, string | null>();
+const llmCountryCache = loadLlmCountryCacheFromFile();
+
+function saveLlmCountryResult(countryName: string, result: string | null): void {
+  llmCountryCache.set(countryName.trim(), result);
+  persistLlmCountryCacheToFile(llmCountryCache);
+}
 
 /**
  * Call LLM to identify a country code from an unrecognized country name.
@@ -199,7 +237,7 @@ async function identifyCountryViaLlm(countryName: string): Promise<string | null
 
     if (!response.ok) {
       console.warn(`[countryNormalizer] LLM request failed: ${response.status}`);
-      llmCountryCache.set(countryName, null);
+      saveLlmCountryResult(countryName, null);
       return null;
     }
 
@@ -209,16 +247,16 @@ async function identifyCountryViaLlm(countryName: string): Promise<string | null
     // Validate that we got a valid 2-letter code
     if (content.length === 2 && VALID_COUNTRY_CODES.has(content.toUpperCase())) {
       const code = content.toUpperCase();
-      llmCountryCache.set(countryName, code);
+      saveLlmCountryResult(countryName, code);
       console.log(`[countryNormalizer] LLM identified "${countryName}" as "${code}"`);
       return code;
     }
 
-    llmCountryCache.set(countryName, null);
+    saveLlmCountryResult(countryName, null);
     return null;
   } catch (err) {
     console.warn(`[countryNormalizer] LLM call error: ${err instanceof Error ? err.message : String(err)}`);
-    llmCountryCache.set(countryName, null);
+    saveLlmCountryResult(countryName, null);
     return null;
   }
 }
@@ -236,18 +274,24 @@ async function identifyCountryViaLlm(countryName: string): Promise<string | null
  * - Mixed: "France, en:morocco, Europe, FR" → ["FR", "MA", ...all European codes]
  * - Unrecognized names: calls LLM for identification (if configured); results are cached
  *
- * @param countriesStr Raw comma-separated string from MongoDB (e.g., "France, en:Morocco, CH")
+ * @param countries Raw comma-separated string or array of country strings
+ *   (e.g., "France, en:Morocco, CH" or ["France", "en:Morocco", "CH"]).
  * @returns Promise resolving to array of unique ISO country codes, or empty array if input is invalid
  */
-export async function normalizeCountries(countriesStr: string | null | undefined): Promise<string[]> {
-  if (!countriesStr || typeof countriesStr !== 'string') {
+export async function normalizeCountries(countries: string | string[] | null | undefined): Promise<string[]> {
+  if (!countries) {
     return [];
   }
 
   const codes = new Set<string>();
 
-  // Split by comma and process each entry
-  const entries = countriesStr.split(',').map(e => e.trim()).filter(Boolean);
+  // Accept either a comma-separated string or an array of country strings
+  const entries = (typeof countries === 'string' ? [countries] : countries)
+    .map(item => String(item).trim())
+    .filter(Boolean)
+    .flatMap(item => item.split(','))
+    .map(entry => entry.trim())
+    .filter(Boolean);
 
   for (const entry of entries) {
     // Strip language prefix if present (e.g., "en:Morocco" → "Morocco")

@@ -1,5 +1,5 @@
 import { chatCompletion } from '../llm/client';
-import { PRODUCT_FINDER_INCI_SYSTEM } from '../llm/prompts';
+import { INCI_SYSTEM } from '../llm/prompts';
 import { LlmCallError } from '../common/errors';
 
 export async function findIngredients(content: string): Promise<string | null> {
@@ -7,15 +7,15 @@ export async function findIngredients(content: string): Promise<string | null> {
   if (!normalizedContent) return null;
 
   try {
-    console.log('[productFinder] prompt=PRODUCT_FINDER_INCI_SYSTEM');
-    const rawText = (await chatCompletion('productFinder', [
-      { role: 'system', content: PRODUCT_FINDER_INCI_SYSTEM },
-      { role: 'user',   content: `Return a comma-separated INCI-formatted list of the most suitable ingredients for: ${normalizedContent}\n\nRespond with ONLY the comma-separated list or "Unknown". No other text.` },
+    console.log('[inci] prompt=INCI_SYSTEM');
+    const rawText = (await chatCompletion('inci', [
+      { role: 'system', content: INCI_SYSTEM },
+      { role: 'user',   content: `Return a comma-separated INCI-formatted list of the most suitable pharmaceutical and parapharmaceutical ingredients for treating the following condition: ${normalizedContent}\n\nRespond with ONLY the comma-separated list or "Unknown". No other text.` },
     ])).trim();
     return extractInciList(rawText);
   } catch (error) {
-    const e = new LlmCallError('productFinder', 'Ingredient proposition failed', error);
-    console.error(`[productFinder] ${e.name}: ${e.message}`, error);
+    const e = new LlmCallError('inci', 'Ingredient proposition failed', error);
+    console.error(`[inci] ${e.name}: ${e.message}`, error);
     return null;
   }
 }

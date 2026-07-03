@@ -18,7 +18,7 @@ const PRESETS = {
   /** Short deterministic extraction — brand name from web content. */
   webResearcher: { model: MODEL, temperature: 0,   max_tokens: 50   },
   /** Short deterministic extraction — INCI ingredient list from query. */
-  productFinder: { model: MODEL, temperature: 0,   max_tokens: 150  },
+  inci:          { model: MODEL, temperature: 0,   max_tokens: 150  },
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

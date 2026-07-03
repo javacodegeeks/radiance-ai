@@ -45,19 +45,38 @@ async function initCollection(): Promise<number> {
   return dims;
 }
 
-function buildSearchableText(product: Record<string, unknown>): string {
-  const categories = Array.isArray(product['categories'])
-    ? (product['categories'] as string[]).join(' | ')
-    : String(product['categories'] ?? '');
+function normalizeData(data: string | string[] | null | undefined): string {
+  if (data === undefined || data === null || data === 'null' || data === 'undefined') {
+    return '';
+  }
 
+  if (typeof data === 'string') {
+    return data.trim();
+  }
+
+  const entries = (data as string[])
+    .map(item => String(item).trim())
+    .filter(Boolean)
+    .map(entry => {
+      const datum = entry.includes(':') ? entry.split(':')[1].trim() : entry;
+      return datum.replaceAll("-", " ").toLowerCase().trim();
+    })
+    .filter(Boolean);
+
+  return entries.join(' | ');
+}
+
+function buildSearchableText(product: Record<string, unknown>): string {
+  const categories = normalizeData(product['categories'] as string ?? product['categories_tags'] as string[]);
+  const ingredients = normalizeData(product['ingredients_text'] as string ?? product['ingredients_text_en'] as string ?? product['ingredients_tags'] as string[] ?? '');
+  const brands = normalizeData(product['brands'] as string ?? product['brands_tags'] as string[] ?? '');
   return [
     product['product_name']        ?? '',
     product['product_name_en']     ?? '',
-    product['brands']              ?? '',
+    product['product_type']        ?? '',
+    brands,
     categories,
-    product['ingredients_text']    ?? '',
-    product['ingredients_text_en'] ?? '',
-    product['product_type'] === 'beauty' ? 'skincare cosmetics beauty product' : '',
+    ingredients,
   ]
     .map(s => (typeof s === 'string' ? s : String(s)).trim())
     .filter(Boolean)
@@ -77,7 +96,7 @@ export async function vectorizeProducts(limit = 0): Promise<void> {
   console.log(`  Embedding dimensions: ${dims}`);
 
   const mongoDb = await getDb();
-  const total   = await mongoDb.collection('products').countDocuments();
+  const total   = await mongoDb.collection('products').estimatedDocumentCount();
   console.log(`  Products in MongoDB: ${total}`);
 
   const cursor = mongoDb.collection('products').find({});
@@ -90,7 +109,7 @@ export async function vectorizeProducts(limit = 0): Promise<void> {
     batch.push(
       Promise.all([
         generateEmbedding(buildSearchableText(p)),
-        normalizeCountries(String(p['countries'] ?? '')),
+        normalizeCountries(p['countries'] as string ?? p['countries_tags'] as string[] ?? ''),
       ]).then(([vector, countries]): QdrantPoint => ({
         id:      toQdrantId(p['_id'] ?? p['code']),
         vector,
@@ -98,9 +117,9 @@ export async function vectorizeProducts(limit = 0): Promise<void> {
           mongo_id:     String(p['_id'] ?? p['code']),
           code:         p['code'],
           product_name: p['product_name'] ?? p['product_name_en'],
-          brands:       p['brands'],
-          categories:   p['categories'],
-          ingredients:  p['ingredients_text'] ?? p['ingredients_text_en'],
+          brands:       normalizeData(p['brands'] as string ?? p['brands_tags'] as string[] ?? ''),
+          categories:   normalizeData(p['categories'] as string ?? p['categories_tags'] as string[] ?? ''),
+          ingredients:  normalizeData(p['ingredients_text'] as string ?? p['ingredients_text_en'] as string ?? p['ingredients_tags'] as string[] ?? ''),
           countries,
           product_type: p['product_type'],
           completeness: p['completeness'],

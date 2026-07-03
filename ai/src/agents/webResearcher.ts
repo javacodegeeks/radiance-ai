@@ -2,7 +2,7 @@ import { TavilySearch } from '@langchain/tavily';
 import { GraphStateType } from '../graph/state';
 import { findIngredients } from '../common/inci';
 import { Product } from '../types';
-import { chatCompletion } from '../llm/client';
+import { chatCompletion, stripJsonFences } from '../llm/client';
 import { WEB_RESEARCHER_PRODUCT_SYSTEM } from '../llm/prompts';
 import { LlmCallError } from '../common/errors';
 
@@ -91,13 +91,11 @@ async function buildQuery(query: string, country?: string): Promise<string> {
       ? `"available in ${country}" OR "ships to ${country}" OR "buy ${country}"`
       : "";
 
-  return `
-${query}
-cosmetic skincare
-${PRODUCT_QUERY_HINTS}
-${inci ? inci : ""}
-${availability}
-`;
+  return [query, 'pharmaceutical or parapharmaceutical product', PRODUCT_QUERY_HINTS, inci, availability]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 async function runTavilySearch(query: string): Promise<unknown[]> {
@@ -121,7 +119,6 @@ function isProductResult(result: { title?: string; url?: string; content?: strin
     const text = `${result.title ?? ""} ${result.content ?? ""}`.toLowerCase();
 
     console.log(`[webResearcher] Scoring result: ${url}`);
-    console.log(`[webResearcher] Text snippet: ${text.substring(0, 100)}...`);
 
     let score = 0;
 
@@ -221,7 +218,7 @@ ${normalized}
 
     console.log("[webResearcher] Product extraction response:", response);
 
-    const parsed = JSON.parse(response) as ExtractedProductInfo;
+    const parsed = JSON.parse(stripJsonFences(response)) as ExtractedProductInfo;
 
     return {
       brand: parsed.brand ?? null,
