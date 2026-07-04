@@ -17,8 +17,9 @@
  */
 import { migrateDb }       from './01-migrate';
 import { seedSafetyRules } from './02-seed-safety';
-import { loadProducts }    from './03-load-products';
-import { vectorizeProducts } from './04-vectorize';
+import { loadOFF }    from './03-load-off';
+import { loadOBF }    from './04-load-obf';
+import { vectorizeProducts } from './05-vectorize';
 import { closeDb as closePg }    from '../src/infra/db';
 import { closeDb as closeMongo } from '../src/infra/mongo';
 
@@ -33,10 +34,13 @@ async function main(): Promise<void> {
   console.log('\nStep 2/4 — Safety rules seed');
   await seedSafetyRules();
 
-  console.log('\nStep 3/4 — Load Open Beauty Facts into MongoDB');
-  await loadProducts();
+  console.log('\nStep 3/4 — Load OFF product catalogue into MongoDB');
+  await loadOFF();
 
-  console.log('\nStep 4/4 — Vectorize products → Qdrant');
+  console.log('\nStep 4/4 — Load OBF product catalogue into MongoDB');
+  await loadOBF();
+
+  console.log('\nStep 5/5 — Vectorize products → Qdrant');
   await vectorizeProducts();
 
   console.log('\n✓ Pipeline complete.\n');

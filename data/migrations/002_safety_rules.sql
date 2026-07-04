@@ -1,4 +1,4 @@
-CREATE TABLE safety_rules (
+CREATE TABLE IF NOT EXISTS safety_rules (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   ingredient    VARCHAR(255) NOT NULL,
   contraindication VARCHAR(255) NOT NULL,
@@ -10,5 +10,5 @@ CREATE TABLE safety_rules (
   UNIQUE (ingredient, contraindication)
 );
 
-CREATE INDEX idx_safety_rules_ingredient        ON safety_rules (ingredient);
-CREATE INDEX idx_safety_rules_contraindication  ON safety_rules (contraindication);
+CREATE INDEX IF NOT EXISTS idx_safety_rules_ingredient        ON safety_rules (ingredient);
+CREATE INDEX IF NOT EXISTS idx_safety_rules_contraindication  ON safety_rules (contraindication);

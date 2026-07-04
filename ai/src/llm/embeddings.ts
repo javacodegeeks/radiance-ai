@@ -10,9 +10,7 @@ type EmbeddingResponse = {
 
 export async function generateEmbedding(text: string): Promise<number[]> {
   const model = process.env.EMBEDDING_MODEL!;
-  const dims  = process.env.EMBEDDING_MODEL_DIMENSIONS ? Number(process.env.EMBEDDING_MODEL_DIMENSIONS) : undefined;
   const body: Record<string, unknown> = { model, input: text };
-  if (dims) body['dimensions'] = dims;
 
   const res = await fetch(`${process.env.LITELLM_BASE_URL}/embeddings`, {
     method: 'POST',
