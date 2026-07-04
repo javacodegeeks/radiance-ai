@@ -1,6 +1,7 @@
 import { GraphStateType } from '../graph/state';
 import { Product, RecommendedProduct } from '../types';
-import { getSafetyRulesForIngredients } from '../tools/safetyRulesLookup';
+import { findSafetyViolations } from '../repositories/safetyRulesRepository';
+import { RepositoryError } from '../common/errors';
 
 /**
  * Safety Checker agent.
@@ -19,11 +20,16 @@ export async function safetyCheckerAgent(
     ...(userProfile.conditions ?? []),
   ];
 
+  console.log(`[safetyChecker] checking ${allProducts.length} product(s) against conditions: [${userConditions.join(', ') || 'none'}]`);
+
   const checked = await Promise.all(
     allProducts.map(p => assessProduct(p, userConditions)),
   );
 
-  const safe = checked.filter(p => p.safetyStatus !== 'unsafe');
+  const safe    = checked.filter(p => p.safetyStatus !== 'unsafe');
+  const unsafe  = checked.filter(p => p.safetyStatus === 'unsafe');
+  const caution = checked.filter(p => p.safetyStatus === 'caution');
+  console.log(`[safetyChecker] safe=${safe.length} caution=${caution.length} unsafe=${unsafe.length}`);
   return { safetyCheckedProducts: safe };
 }
 
@@ -41,7 +47,19 @@ async function assessProduct(
     };
   }
 
-  const violations = await getSafetyRulesForIngredients(product.inci, userConditions);
+  let violations;
+  try {
+    violations = await findSafetyViolations(product.inci, userConditions);
+  } catch (err) {
+    const label = err instanceof RepositoryError ? 'RepositoryError' : 'Unexpected error';
+    console.error(`[safetyChecker] ${label} for "${product.name}" — defaulting to caution`, err);
+    return {
+      ...product,
+      safetyStatus: 'caution',
+      safetyNotes:  'Safety check unavailable — verify before purchase.',
+      relevanceScore: 0.5,
+    };
+  }
 
   const hasCriticalOrHigh = violations.some(
     v => v.severity === 'critical' || v.severity === 'high',

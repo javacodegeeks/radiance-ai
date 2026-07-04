@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { TavilySearchResults } from '@langchain/community/tools/tavily_search';
 
+// @ts-ignore — LangChain tool() triggers TS2589 deep generic instantiation
 export const webSearchTool = tool(
   async ({ query, country }) => {
     const tavilyTool = new TavilySearchResults({ maxResults: 10 });
