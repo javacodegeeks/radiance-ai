@@ -186,8 +186,7 @@ function persistLlmCountryCacheToFile(cache: Map<string, string | null>, cacheFi
 // Maps normalized country name → ISO code (or null if unrecognized)
 const llmCountryCache = loadLlmCountryCacheFromFile();
 
-function saveLlmCountryResult(countryName: string, result: string | null): void {
-  llmCountryCache.set(countryName.trim(), result);
+function flushLlmCountryCacheToDisk(): void {
   persistLlmCountryCacheToFile(llmCountryCache);
 }
 
@@ -237,7 +236,7 @@ async function identifyCountryViaLlm(countryName: string): Promise<string | null
 
     if (!response.ok) {
       console.warn(`[countryNormalizer] LLM request failed: ${response.status}`);
-      saveLlmCountryResult(countryName, null);
+      llmCountryCache.set(countryName.trim(), null);
       return null;
     }
 
@@ -247,16 +246,16 @@ async function identifyCountryViaLlm(countryName: string): Promise<string | null
     // Validate that we got a valid 2-letter code
     if (content.length === 2 && VALID_COUNTRY_CODES.has(content.toUpperCase())) {
       const code = content.toUpperCase();
-      saveLlmCountryResult(countryName, code);
+      llmCountryCache.set(countryName.trim(), code);
       console.log(`[countryNormalizer] LLM identified "${countryName}" as "${code}"`);
       return code;
     }
 
-    saveLlmCountryResult(countryName, null);
+    llmCountryCache.set(countryName.trim(), null);
     return null;
   } catch (err) {
     console.warn(`[countryNormalizer] LLM call error: ${err instanceof Error ? err.message : String(err)}`);
-    saveLlmCountryResult(countryName, null);
+    llmCountryCache.set(countryName.trim(), null);
     return null;
   }
 }
@@ -344,3 +343,5 @@ export async function normalizeCountries(countries: string | string[] | null | u
 
   return Array.from(codes).sort();
 }
+
+process.once('exit', flushLlmCountryCacheToDisk);

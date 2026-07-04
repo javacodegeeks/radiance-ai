@@ -46,7 +46,7 @@ async function initCollection(): Promise<number> {
 }
 
 function normalizeData(data: string | string[] | null | undefined): string {
-  if (data === undefined || data === null || data === 'null' || data === 'undefined') {
+  if (!data) {
     return '';
   }
 
@@ -67,9 +67,9 @@ function normalizeData(data: string | string[] | null | undefined): string {
 }
 
 function buildSearchableText(product: Record<string, unknown>): string {
-  const categories = normalizeData(product['categories'] as string ?? product['categories_tags'] as string[]);
-  const ingredients = normalizeData(product['ingredients_text'] as string ?? product['ingredients_text_en'] as string ?? product['ingredients_tags'] as string[] ?? '');
-  const brands = normalizeData(product['brands'] as string ?? product['brands_tags'] as string[] ?? '');
+  const categories = normalizeData((product['categories'] ?? product['categories_tags']) as string | string[] | undefined);
+  const ingredients = normalizeData((product['ingredients_text'] ?? product['ingredients_text_en']) as string | string[] | undefined);
+  const brands = normalizeData((product['brands'] ?? product['brands_tags']) as string | string[] | undefined);
   return [
     product['product_name']        ?? '',
     product['product_name_en']     ?? '',
@@ -109,7 +109,7 @@ export async function vectorizeProducts(limit = 0): Promise<void> {
     batch.push(
       Promise.all([
         generateEmbedding(buildSearchableText(p)),
-        normalizeCountries(p['countries'] as string ?? p['countries_tags'] as string[] ?? ''),
+        normalizeCountries((p['countries'] ?? p['countries_tags']) as string | string[] | undefined),
       ]).then(([vector, countries]): QdrantPoint => ({
         id:      toQdrantId(p['_id'] ?? p['code']),
         vector,
@@ -117,9 +117,9 @@ export async function vectorizeProducts(limit = 0): Promise<void> {
           mongo_id:     String(p['_id'] ?? p['code']),
           code:         p['code'],
           product_name: p['product_name'] ?? p['product_name_en'],
-          brands:       normalizeData(p['brands'] as string ?? p['brands_tags'] as string[] ?? ''),
-          categories:   normalizeData(p['categories'] as string ?? p['categories_tags'] as string[] ?? ''),
-          ingredients:  normalizeData(p['ingredients_text'] as string ?? p['ingredients_text_en'] as string ?? p['ingredients_tags'] as string[] ?? ''),
+          brands:       normalizeData((p['brands'] ?? p['brands_tags']) as string | string[] | undefined),
+          categories:   normalizeData((p['categories'] ?? p['categories_tags']) as string | string[] | undefined),
+          ingredients:  normalizeData((p['ingredients_text'] ?? p['ingredients_text_en'] ?? p['ingredients_tags']) as string | string[] | undefined),
           countries,
           product_type: p['product_type'],
           completeness: p['completeness'],

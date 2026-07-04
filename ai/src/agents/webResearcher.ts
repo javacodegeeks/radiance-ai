@@ -118,7 +118,7 @@ function isProductResult(result: { title?: string; url?: string; content?: strin
     const url = (result.url ?? "").toLowerCase();
     const text = `${result.title ?? ""} ${result.content ?? ""}`.toLowerCase();
 
-    console.log(`[webResearcher] Scoring result: ${url}`);
+    console.debug(`[webResearcher] Scoring result: ${url}`);
 
     let score = 0;
 

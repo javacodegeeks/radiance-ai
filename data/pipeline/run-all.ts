@@ -34,11 +34,13 @@ async function main(): Promise<void> {
   console.log('\nStep 2/4 — Safety rules seed');
   await seedSafetyRules();
 
-  console.log('\nStep 3/4 — Load product catalogues into MongoDB');
+  console.log('\nStep 3/4 — Load OFF product catalogue into MongoDB');
   await loadOFF();
+
+  console.log('\nStep 4/4 — Load OBF product catalogue into MongoDB');
   await loadOBF();
 
-  console.log('\nStep 4/4 — Vectorize products → Qdrant');
+  console.log('\nStep 5/5 — Vectorize products → Qdrant');
   await vectorizeProducts();
 
   console.log('\n✓ Pipeline complete.\n');
