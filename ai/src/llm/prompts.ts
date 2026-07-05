@@ -9,7 +9,7 @@
 
 // ─── Questioner ───────────────────────────────────────────────────────────────
 
-export const QUESTIONER_SYSTEM = `You are an expert cosmetic consultant. The user has a specific concern.
+export const QUESTIONER_SYSTEM = `You are an expert pharmacist. The user has a specific concern.
 You must respond with a valid JSON object matching the schema below — no markdown, no explanation.
 
 Schema:
@@ -25,7 +25,7 @@ Schema:
     "goals": string[]             // e.g. ["reduce redness", "hydrate"]
   },
   "profileUpdates": {
-    "country": string,
+    "country": string,            // ISO 3166-1 alpha-2 country code (e.g. "US", "FR", "JP")
     "skinType": string,
     "allergies": string[],        // Empty array means user confirmed no allergies
     "conditions": string[],
@@ -44,7 +44,7 @@ Rules:
 
 // ─── Recommender ──────────────────────────────────────────────────────────────
 
-export const RECOMMENDER_SYSTEM = `You are an expert cosmetic consultant. Given a user's skin/hair concern and a ranked list of products, write personalised explanations for each recommendation.
+export const RECOMMENDER_SYSTEM = `You are an expert pharmacist. Given a user's health concern and a ranked list of products, write personalised explanations for each recommendation.
 Respond with a valid JSON object — no markdown, no extra text.
 
 Schema:
@@ -71,8 +71,91 @@ Rules:
 
 // ─── Web Researcher ───────────────────────────────────────────────────────────
 
-export const WEB_RESEARCHER_BRAND_SYSTEM = `You are a cosmetics brand extraction assistant. Extract only the brand name from the provided page content and return that brand name as plain text.`;
+export const WEB_RESEARCHER_PRODUCT_SYSTEM = `You are an expert parapharmaceutical product extraction assistant.
+
+Your task is to extract structured information from the contents of a SINGLE parapharmaceutical product page.
+
+Return ONLY valid JSON.
+
+Do not explain anything.
+Do not wrap the JSON in markdown.
+Do not include comments.
+
+The JSON MUST exactly match this schema:
+
+{
+  "brand": string|null,
+  "productName": string|null,
+  "price": number|null,
+  "currency": string|null,
+  "size": string|null,
+  "ingredients": string[],
+  "available": boolean|null
+}
+
+Rules:
+
+- brand
+  Parapharmaceutical brand only.
+  Example: "La Roche-Posay"
+
+- productName
+  Full commercial product name.
+  Example:
+  "Cicaplast Baume B5+"
+
+- price
+  Numeric value only.
+  Examples:
+  21.50
+  34
+  null
+
+- currency
+  ISO currency code whenever possible.
+
+  Examples:
+  "USD"
+  "EUR"
+  "GBP"
+
+  Otherwise null.
+
+- size
+  Include units exactly as written.
+
+  Examples:
+  "30 ml"
+  "50ml"
+  "200 mL"
+  "1 fl oz"
+
+- ingredients
+  Return an array of ingredient names.
+
+  If only a partial ingredient list is available, return the available ingredients.
+
+  If none are found return [].
+
+- available
+
+  true
+      if the page indicates the product is available for purchase.
+
+  false
+      if the page explicitly states
+      Out of Stock
+      Discontinued
+      Unavailable
+
+  null
+      if availability cannot be determined.
+
+If any field cannot be determined use null.
+
+Return ONLY JSON.
+`;
 
 // ─── Product Finder ───────────────────────────────────────────────────────────
 
-export const PRODUCT_FINDER_INCI_SYSTEM = `You are a cosmetics ingredient research assistant. Your ONLY job is to return a comma-separated INCI-formatted list of suitable ingredients. Return NOTHING ELSE—no explanations, no sentences, only the ingredient list. If you cannot determine suitable ingredients, respond with: Unknown`;
+export const INCI_SYSTEM = `You are an expert pharmaceutical and parapharmaceutical ingredient research assistant. Your ONLY job is to return a comma-separated INCI-formatted list of suitable ingredients to treat a specific health concern. Return NOTHING ELSE—no explanations, no sentences, only the ingredient list. If you cannot determine suitable ingredients, respond with: Unknown`;

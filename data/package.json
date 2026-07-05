@@ -8,8 +8,8 @@
     "pipeline": "ts-node -r dotenv/config pipeline/run-all.ts",
     "pipeline:migrate": "ts-node -r dotenv/config pipeline/01-migrate.ts",
     "pipeline:safety": "ts-node -r dotenv/config pipeline/02-seed-safety.ts",
-    "pipeline:load": "ts-node -r dotenv/config pipeline/03-load-products.ts",
-    "pipeline:vectorize": "ts-node -r dotenv/config pipeline/04-vectorize.ts"
+    "pipeline:load": "ts-node -r dotenv/config pipeline/03-load-off.ts && ts-node -r dotenv/config pipeline/04-load-obf.ts",
+    "pipeline:vectorize": "ts-node -r dotenv/config pipeline/05-vectorize.ts"
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.16.2",
