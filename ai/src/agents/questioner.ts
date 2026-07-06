@@ -4,12 +4,16 @@ import { QUESTIONER_SYSTEM } from '../llm/prompts';
 import { LlmCallError, SchemaParseError } from '../common/errors';
 import { FALLBACK_QUESTIONS } from '../config/profileQuestions';
 import { GraphStateType } from '../graph/state';
+import { searchClinicalEvidence } from '../tools/pubmed/searchClinicalEvidence';
+import type { PubMedSearchResult } from '../tools/pubmed/types';
 
 // ─── Structured output schema ─────────────────────────────────────────────────
 
 const QuestionerOutputSchema = z.object({
   /** 1–3 focused questions for the user. Empty when no more info is needed. */
   questions: z.array(z.string()).max(3),
+  /** PubMed search query to run if clinical evidence is needed; null otherwise */
+  evidenceQuery: z.string().nullish(),
   /** Refined understanding of the user's specific issue */
   queryRefinement: z.object({
     refinedIssue:       z.string().nullish(),
@@ -106,12 +110,75 @@ Based on the above, respond with the JSON object.`;
     throw new LlmCallError('questioner', 'LLM API call failed', err);
   }
 
+  let output: QuestionerOutput;
   try {
-    const output: QuestionerOutput = QuestionerOutputSchema.parse(JSON.parse(stripJsonFences(raw)));
-    return buildStateUpdate(output, state);
+    output = QuestionerOutputSchema.parse(JSON.parse(stripJsonFences(raw)));
   } catch (err) {
     throw new SchemaParseError('questioner', 'LLM response failed schema validation', err);
   }
+
+  // ── ReAct-lite: fetch clinical evidence if the LLM requested it ──────────────
+  if (output.evidenceQuery) {
+    console.log(`[questioner] evidence query requested: "${output.evidenceQuery}"`);
+    try {
+      const evidence = await searchClinicalEvidence(output.evidenceQuery, { maxResults: 3 });
+
+      if (evidence.articles.length > 0) {
+        console.log(`[questioner] retrieved ${evidence.articles.length} evidence articles`);
+        const evidenceText = formatEvidenceForPrompt(evidence);
+
+        // Second LLM call: inject evidence and ask the model to refine its questions
+        const refinedMessages: LlmMessage[] = [
+          ...messages,
+          { role: 'assistant', content: raw },
+          {
+            role: 'user',
+            content:
+              `PubMed evidence retrieved for "${output.evidenceQuery}":\n\n${evidenceText}\n\n` +
+              'Using this evidence, refine your response with more evidence-based questions. ' +
+              'Respond with the JSON object.',
+          },
+        ];
+
+        try {
+          const refinedRaw = await chatCompletion('questioner', refinedMessages);
+          output = QuestionerOutputSchema.parse(JSON.parse(stripJsonFences(refinedRaw)));
+          console.log('[questioner] evidence-enriched response parsed successfully');
+        } catch {
+          // Second call failure is non-fatal — proceed with the original output
+          console.warn('[questioner] evidence-enriched call failed, using original output');
+        }
+      }
+    } catch (err) {
+      // PubMed failure is non-fatal — the questioner can still function without evidence
+      console.warn(
+        `[questioner] PubMed search failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  return buildStateUpdate(output, state);
+}
+
+// ─── Evidence formatting ──────────────────────────────────────────────────────
+
+function formatEvidenceForPrompt(result: PubMedSearchResult): string {
+  return result.articles
+    .map((a, i) => {
+      const authorStr = a.authors.length
+        ? a.authors.slice(0, 3).join(', ') + (a.authors.length > 3 ? ' et al.' : '')
+        : 'Unknown authors';
+      const abstractSnippet = a.abstract
+        ? a.abstract.slice(0, 400) + (a.abstract.length > 400 ? '...' : '')
+        : 'No abstract available';
+      return (
+        `[${i + 1}] ${a.title}\n` +
+        `Authors: ${authorStr}\n` +
+        `Journal: ${a.journal} (${a.publicationDate})\n` +
+        `Abstract: ${abstractSnippet}`
+      );
+    })
+    .join('\n\n');
 }
 
 // ─── Fallback path ────────────────────────────────────────────────────────────
