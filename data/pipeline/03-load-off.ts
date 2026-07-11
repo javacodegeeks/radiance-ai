@@ -20,7 +20,7 @@ export async function loadOFF() {
     sha256Url: SHA256SUM_URL,
     localFile: LOCAL_FILE,
     mongoNamespaceFrom: 'off',
-    drop: true,
+    drop: true
   });
 }
 

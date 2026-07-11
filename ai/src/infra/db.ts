@@ -15,6 +15,7 @@ export function getDb(): Pool {
       connectionTimeoutMillis:  2_000,
     });
     pool.on('error', (err) => { console.error('[pg] Unexpected pool error:', err); });
+    console.log(`[pg] Pool created host=${process.env.DB_HOST} db=${process.env.DB_NAME}`);
   }
   return pool;
 }

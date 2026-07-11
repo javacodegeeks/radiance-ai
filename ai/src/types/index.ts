@@ -32,6 +32,10 @@ export interface Product {
   inci: string[];
   categories: string[];
   countryAvailability: string[];
+  /** Product claims, e.g. 'hypoallergenic', 'fragrance free', 'vegan' */
+  labels?: string[];
+  /** Structured allergen tags (e.g. EU fragrance allergens like 'linalool', 'limonene') — more reliable than free-text INCI parsing */
+  allergens?: string[];
   sourceUrl?: string;
   embedding?: number[];
   cachedAt?: Date;

@@ -6,19 +6,27 @@ import { FALLBACK_QUESTIONS } from '../config/profileQuestions';
 import { GraphStateType } from '../graph/state';
 import { searchClinicalEvidence } from '../tools/pubmed/searchClinicalEvidence';
 import type { PubMedSearchResult } from '../tools/pubmed/types';
+import { normalizeAllergies } from '../common/allergyNormalizer';
 
 // ─── Structured output schema ─────────────────────────────────────────────────
 
+// Fields below use .catch() to survive minor LLM non-compliance (wrong enum
+// value, wrong type) without discarding the *entire* response — a strict
+// .parse() previously threw SchemaParseError over one bad field (e.g.
+// severity: "unknown"), losing otherwise-valid extracted data and falling
+// all the way back to static questions. Hard limits like "max 3 questions"
+// are enforced in code after parsing (see .slice(0, 3) below) rather than in
+// the schema, so an overshoot trims the response instead of rejecting it.
 const QuestionerOutputSchema = z.object({
-  /** 1–3 focused questions for the user. Empty when no more info is needed. */
-  questions: z.array(z.string()).max(3),
+  /** 1–3 focused questions for the user. Empty when no more info is needed. Clamped to 3 after parsing. */
+  questions: z.array(z.string()),
   /** PubMed search query to run if clinical evidence is needed; null otherwise */
   evidenceQuery: z.string().nullish(),
   /** Refined understanding of the user's specific issue */
   queryRefinement: z.object({
     refinedIssue:       z.string().nullish(),
     bodyArea:           z.string().nullish(),
-    severity:           z.enum(['mild', 'moderate', 'severe']).nullish(),
+    severity:           z.enum(['mild', 'moderate', 'severe']).nullish().catch(undefined),
     duration:           z.string().nullish(),
     triggers:           z.array(z.string()).nullish(),
     previousTreatments: z.array(z.string()).nullish(),
@@ -33,9 +41,9 @@ const QuestionerOutputSchema = z.object({
     concerns:   z.array(z.string()).nullish(),
   }),
   /** True when the issue is understood well enough to search for products */
-  queryReady: z.boolean(),
+  queryReady: z.boolean().catch(false),
   /** True when country and allergies are known */
-  profileComplete: z.boolean(),
+  profileComplete: z.boolean().catch(false),
 });
 
 type QuestionerOutput = z.infer<typeof QuestionerOutputSchema>;
@@ -113,6 +121,7 @@ Based on the above, respond with the JSON object.`;
   let output: QuestionerOutput;
   try {
     output = QuestionerOutputSchema.parse(JSON.parse(stripJsonFences(raw)));
+    output.questions = output.questions.slice(0, 3);
   } catch (err) {
     throw new SchemaParseError('questioner', 'LLM response failed schema validation', err);
   }
@@ -143,6 +152,7 @@ Based on the above, respond with the JSON object.`;
         try {
           const refinedRaw = await chatCompletion('questioner', refinedMessages);
           output = QuestionerOutputSchema.parse(JSON.parse(stripJsonFences(refinedRaw)));
+          output.questions = output.questions.slice(0, 3);
           console.log('[questioner] evidence-enriched response parsed successfully');
         } catch {
           // Second call failure is non-fatal — proceed with the original output
@@ -221,6 +231,21 @@ function runFallbackQuestioner(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * The prompt instructs the LLM to return an ISO 3166-1 alpha-2 country code
+ * (e.g. "GB"), but it doesn't always comply for informal phrasing (e.g. a
+ * user answering "I am UK" can make it echo back "i am UK" verbatim). An
+ * un-normalized value here silently breaks the Qdrant country filter and the
+ * web-search query downstream — reject anything that isn't a 2-letter code
+ * rather than trusting free text, the same way normalizeAllergies() never
+ * lets allergies through unnormalized.
+ */
+function normalizeCountryCode(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return /^[A-Za-z]{2}$/.test(trimmed) ? trimmed.toUpperCase() : undefined;
+}
+
 function buildStateUpdate(
   output: QuestionerOutput,
   state: GraphStateType,
@@ -228,18 +253,23 @@ function buildStateUpdate(
   const { r } = { r: output.queryRefinement };
   const { p } = { p: output.profileUpdates };
 
+  const normalizedCountry = normalizeCountryCode(p.country);
+  if (p.country != null && !normalizedCountry) {
+    console.warn(`[questioner] LLM returned non-ISO country value "${p.country}" — ignoring`);
+  }
+
   // Merge LLM-extracted profile fields over existing profile
   // != null guards against both null and undefined (LLMs may return either for absent fields)
   const mergedProfile: Partial<GraphStateType['userProfile']> = {
-    ...p.country    != null && { country:    p.country },
+    ...normalizedCountry != null && { country:    normalizedCountry },
     ...p.skinType   != null && { skinType:   p.skinType },
-    ...p.allergies  != null && { allergies:  p.allergies },
+    ...p.allergies  != null && { allergies:  normalizeAllergies(p.allergies) },
     ...p.conditions != null && { conditions: p.conditions },
     ...p.concerns   != null && { concerns:   p.concerns },
   };
 
   // Safety net: don't trust LLM's profileComplete if critical fields are absent
-  const effectiveCountry    = p.country    ?? state.userProfile.country;
+  const effectiveCountry    = normalizedCountry ?? state.userProfile.country;
   const effectiveAllergies  = p.allergies  ?? state.userProfile.allergies;
   const criticalFieldsPresent = !!effectiveCountry && effectiveAllergies != null;
 
