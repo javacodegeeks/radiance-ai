@@ -19,7 +19,7 @@ export async function loadOBF() {
     dumpUrl: DUMP_URL,
     sha256Url: SHA256SUM_URL,
     localFile: LOCAL_FILE,
-    mongoNamespaceFrom: 'obf',
+    mongoNamespaceFrom: 'obf'
   });
 }
 

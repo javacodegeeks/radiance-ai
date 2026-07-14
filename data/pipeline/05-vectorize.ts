@@ -70,6 +70,7 @@ function buildSearchableText(product: Record<string, unknown>): string {
   const categories = normalizeData((product['categories'] ?? product['categories_tags']) as string | string[] | undefined);
   const ingredients = normalizeData((product['ingredients_text'] ?? product['ingredients_text_en']) as string | string[] | undefined);
   const brands = normalizeData((product['brands'] ?? product['brands_tags']) as string | string[] | undefined);
+  const labels = normalizeData(product['labels_tags'] as string | string[] | undefined);
   return [
     product['product_name']        ?? '',
     product['product_name_en']     ?? '',
@@ -77,6 +78,7 @@ function buildSearchableText(product: Record<string, unknown>): string {
     brands,
     categories,
     ingredients,
+    labels,
   ]
     .map(s => (typeof s === 'string' ? s : String(s)).trim())
     .filter(Boolean)
@@ -106,6 +108,12 @@ export async function vectorizeProducts(limit = 0): Promise<void> {
 
   for await (const product of cursor) {
     const p = product as Record<string, unknown>;
+
+    // OFF (Open Food Facts) and OBF (Open Beauty Facts) dumps are restored into
+    // the same collection — skip food items, they're irrelevant to a cosmetic
+    // recommender and have no consumer anywhere in ai/src.
+    if (p['product_type'] === 'food') continue;
+
     batch.push(
       Promise.all([
         generateEmbedding(buildSearchableText(p)),
@@ -120,6 +128,7 @@ export async function vectorizeProducts(limit = 0): Promise<void> {
           brands:       normalizeData((p['brands'] ?? p['brands_tags']) as string | string[] | undefined),
           categories:   normalizeData((p['categories'] ?? p['categories_tags']) as string | string[] | undefined),
           ingredients:  normalizeData((p['ingredients_text'] ?? p['ingredients_text_en'] ?? p['ingredients_tags']) as string | string[] | undefined),
+          labels:       normalizeData(p['labels_tags'] as string | string[] | undefined),
           countries,
           product_type: p['product_type'],
           completeness: p['completeness'],
