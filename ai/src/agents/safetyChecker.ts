@@ -132,10 +132,7 @@ export async function safetyCheckerAgent(
   return { safetyCheckedProducts: safe };
 }
 
-async function assessProduct(
-  product: Product,
-  userConditions: string[],
-): Promise<RecommendedProduct> {
+async function assessProduct(product: Product, userConditions: string[],): Promise<RecommendedProduct> {
     // SafetyReport init
   let report: SafetyReport = {
     approved: true,
@@ -158,7 +155,7 @@ async function assessProduct(
       relevanceScore: 0.5,
     };
   }
-
+  
   let violations: SafetyRule[];
   
   try {
