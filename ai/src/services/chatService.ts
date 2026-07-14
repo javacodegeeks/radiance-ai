@@ -6,6 +6,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { run } from '../graph/runner';
 import { AgentError, RepositoryError } from '../common/errors';
+import { normalizeAllergies } from '../common/allergyNormalizer';
 import { PROFILE_QUESTIONS } from '../config/profileQuestions';
 import {
   getSession,
@@ -135,7 +136,7 @@ export async function processMessage(sessionId: string, message: string): Promis
     const existingProfile = {
       country:    updAnswers['country'],
       skinType:   updAnswers['skinType'],
-      allergies:  parseList(updAnswers['allergies']  ?? ''),
+      allergies:  normalizeAllergies(parseList(updAnswers['allergies']  ?? '')),
       conditions: parseList(updAnswers['conditions'] ?? ''),
     };
 

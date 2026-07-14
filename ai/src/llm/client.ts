@@ -12,13 +12,13 @@ const MODEL = process.env.LLM_MODEL!;
 
 const PRESETS = {
   /** Deterministic JSON extraction — clarify user concern and profile. */
-  questioner:    { model: MODEL, temperature: 0,   max_tokens: 1024 },
+  questioner:    { model: MODEL, temperature: 0,   max_tokens: 2048 },
   /** Slightly creative — personalised product explanations. */
   recommender:   { model: MODEL, temperature: 0.3, max_tokens: 2048 },
   /** Short deterministic extraction — brand name from web content. */
   webResearcher: { model: MODEL, temperature: 0,   max_tokens: 50   },
   /** Short deterministic extraction — INCI ingredient list from query. */
-  inci:          { model: MODEL, temperature: 0,   max_tokens: 150  },
+  inci:          { model: MODEL, temperature: 0,   max_tokens: 300  },
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ export type LlmMessage = { role: 'system' | 'user' | 'assistant'; content: strin
 export type ChatPreset = keyof typeof PRESETS;
 
 type ChatCompletionResponse = {
-  choices: Array<{ message: { content: string | null } }>;
+  choices: Array<{ message: { content: string | null }; finish_reason?: string }>;
 };
 
 // ─── Public interface ─────────────────────────────────────────────────────────
@@ -51,6 +51,8 @@ export async function chatCompletion(
   preset: ChatPreset,
   messages: LlmMessage[],
 ): Promise<string> {
+  console.log(`[llm] preset=${preset} request:`, JSON.stringify(messages, null, 2));
+
   const res = await fetch(`${process.env.LITELLM_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -61,9 +63,13 @@ export async function chatCompletion(
   });
 
   if (!res.ok) {
+    console.error(`[llm] preset=${preset} chat request failed: ${res.status} ${res.statusText}`);
     throw new Error(`LiteLLM chat request failed: ${res.status} ${res.statusText}`);
   }
 
   const json = await res.json() as ChatCompletionResponse;
+  if (json.choices[0]?.finish_reason === 'length') {
+    console.warn(`[llm] preset=${preset} response truncated by max_tokens — increase the preset limit if this recurs`);
+  }
   return json.choices[0]?.message?.content ?? '';
 }

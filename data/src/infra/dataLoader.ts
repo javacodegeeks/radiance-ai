@@ -154,23 +154,34 @@ function downloadFile(url: string, dest: string, resumeOffset = getResumeOffset(
 export async function loadDump(opts: DumpLoaderOptions): Promise<void> {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 
-  const remoteChecksum = await fetchChecksum(opts.sha256Url, opts.localFile);
   const LOCAL_FILE = path.join(CACHE_DIR, opts.localFile);
   const CHECKSUM_FILE = `${LOCAL_FILE}.sha256`;
 
-  if (fs.existsSync(LOCAL_FILE) && fs.existsSync(CHECKSUM_FILE)) {
-    const savedChecksum = fs.readFileSync(CHECKSUM_FILE, 'utf8').trim();
-    if (remoteChecksum && remoteChecksum === savedChecksum) {
-      console.log('  OFF dump is up to date — skipping download.');
-    } else {
-      console.log('  OFF dump has changed — downloading fresh copy...');
-      await downloadFile(opts.dumpUrl, LOCAL_FILE);
-      if (remoteChecksum) fs.writeFileSync(CHECKSUM_FILE, remoteChecksum);
-    }
+  // If the dump already exists locally, skip download and restore it directly.
+  if (fs.existsSync(LOCAL_FILE)) {
+    console.log('Found cached dump — skipping download.');
   } else {
-    console.log('  No cached dump — downloading...');
-    await downloadFile(opts.dumpUrl, LOCAL_FILE);
-    if (remoteChecksum) fs.writeFileSync(CHECKSUM_FILE, remoteChecksum);
+    const remoteChecksum = await fetchChecksum(opts.sha256Url, opts.localFile);
+
+    if (fs.existsSync(CHECKSUM_FILE)) {
+      const savedChecksum = fs.readFileSync(CHECKSUM_FILE, 'utf8').trim();
+
+      if (remoteChecksum && remoteChecksum === savedChecksum) {
+        console.log('Dump is up to date — skipping download.');
+      } else {
+        console.log('Dump has changed — downloading fresh copy...');
+        await downloadFile(opts.dumpUrl, LOCAL_FILE);
+        if (remoteChecksum) {
+          fs.writeFileSync(CHECKSUM_FILE, remoteChecksum);
+        }
+      }
+    } else {
+      console.log('No cached dump — downloading...');
+      await downloadFile(opts.dumpUrl, LOCAL_FILE);
+      if (remoteChecksum) {
+        fs.writeFileSync(CHECKSUM_FILE, remoteChecksum);
+      }
+    }
   }
 
   const host = process.env.MONGO_HOST;
@@ -181,17 +192,21 @@ export async function loadDump(opts: DumpLoaderOptions): Promise<void> {
 
   console.log(`  Restoring dump to MongoDB at ${host}:${port} ...`);
 
-  execFileSync('mongorestore', [
-    '--host', `${host}:${port}`,
-    '--username', user!,
-    '--password', password!,
-    '--authenticationDatabase', 'admin',
-    '--gzip',
-    `--archive=${LOCAL_FILE}`,
-    '--nsFrom', `${opts.mongoNamespaceFrom}.`,
-    '--nsTo', `${dbName}.`,
-    opts.drop ? '--drop' : undefined
-  ].filter(Boolean) as string[], { stdio: 'inherit' });
+  execFileSync(
+    'mongorestore',
+    [
+      '--host', `${host}:${port}`,
+      '--username', user!,
+      '--password', password!,
+      '--authenticationDatabase', 'admin',
+      '--gzip',
+      `--archive=${LOCAL_FILE}`,
+      '--nsFrom', `${opts.mongoNamespaceFrom}.*`,
+      '--nsTo', `${dbName}.*`,
+      ...(opts.drop ? ['--drop'] : [])
+    ],
+    { stdio: 'inherit' }
+  );
 
   console.log('  MongoDB restore complete.');
 }

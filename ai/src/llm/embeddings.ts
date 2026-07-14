@@ -22,6 +22,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   });
 
   if (!res.ok) {
+    console.error(`[embeddings] model=${model} request failed: ${res.status} ${res.statusText}`);
     throw new Error(`Embedding request failed: ${res.status} ${res.statusText}`);
   }
 

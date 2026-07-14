@@ -15,6 +15,14 @@ function toArray(value: unknown): string[] {
   return [];
 }
 
+/** Strip Open Beauty Facts language prefixes (e.g. "en:fragrance-free" -> "fragrance free"). */
+function normalizeTags(value: unknown): string[] {
+  return toArray(value)
+    .map(tag => (tag.includes(':') ? tag.split(':')[1] : tag))
+    .map(tag => tag.replaceAll('-', ' ').trim())
+    .filter(Boolean);
+}
+
 function normalizeId(id: unknown): string {
   if (id instanceof ObjectId) return id.toHexString();
   return String(id);
@@ -35,6 +43,8 @@ function toProduct(r: ProductDoc): Product {
     inci:                toArray(r['ingredients_text'] || r['ingredients_text_en']),
     categories:          toArray(r['categories']),
     countryAvailability: toArray(r['countries']),
+    labels:              normalizeTags(r['labels_tags']),
+    allergens:           normalizeTags(r['allergens_tags']),
     cachedAt:            r['cached_at'] instanceof Date ? r['cached_at'] : undefined,
   };
 }
@@ -58,6 +68,7 @@ export async function findSimilarProducts(
   let hits;
   try {
     hits = await qdrant.search(COLLECTION_NAME, searchRequest);
+    console.log(`[productRepository] Qdrant search returned ${hits.length} hit(s)${country ? ` (country=${country})` : ''}`);
   } catch (err) {
     const detail = (err as { data?: unknown })?.data;
     if (detail !== undefined) {
@@ -70,7 +81,10 @@ export async function findSimilarProducts(
     .map(hit => (hit.payload as Record<string, unknown> | undefined)?.['mongo_id'] as string | undefined)
     .filter((id): id is string => id !== undefined);
 
-  if (!mongoIds.length) return [];
+  if (!mongoIds.length) {
+    console.log('[productRepository] no mongo_id in Qdrant payloads — returning empty');
+    return [];
+  }
 
   let docs;
   try {

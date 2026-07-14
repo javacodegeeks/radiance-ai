@@ -95,6 +95,14 @@ Return STRICT JSON ONLY:
   }
 } 
 /**
+ * Below this many ingredient/allergen signals, "no violations found" is not
+ * a reliable "safe" verdict — the product's underlying data (INCI text,
+ * allergens_tags) is too sparse to say the rule lookup had a fair chance.
+ * See data/pipeline/02-seed-safety.ts for why sparse data is common here.
+ */
+const MIN_RELIABLE_INGREDIENT_COUNT = 5;
+
+/**
  * Safety Checker agent.
  * Validates every product candidate against the user's profile.
  * Products marked 'unsafe' are filtered out; 'caution' products are kept with notes.
@@ -137,6 +145,12 @@ async function assessProduct(
   };
   // If no INCI data we cannot verify — flag as caution
   if (!product.inci.length) {
+  // Merge free-text INCI with structured allergen tags (e.g. OBF's EU fragrance
+  // allergens) — allergens_tags is cleaner/more reliable than parsing raw INCI text.
+  const ingredientSignals = [...product.inci, ...(product.allergens ?? [])];
+
+  // If no ingredient data at all we cannot verify — flag as caution
+  if (!ingredientSignals.length) {
     return {
       ...product,
       safetyStatus: 'caution',
@@ -148,7 +162,7 @@ async function assessProduct(
   let violations: SafetyRule[];
   
   try {
-    violations = await findSafetyViolations(product.inci, userConditions);
+    violations = await findSafetyViolations(ingredientSignals, userConditions);
   } catch (err) {
     const label = err instanceof RepositoryError ? 'RepositoryError' : 'Unexpected error';
     console.error(`[safetyChecker] ${label} for "${product.name}" — defaulting to caution`, err);
@@ -217,5 +231,17 @@ async function assessProduct(
     };
   }
 
+  // No known violations — but with too few ingredient signals, that means
+  // "nothing to check against" more often than "confirmed safe".
+  if (ingredientSignals.length < MIN_RELIABLE_INGREDIENT_COUNT) {
+    return {
+      ...product,
+      safetyStatus: 'caution',
+      safetyNotes:  'Ingredient data is too sparse to confidently rule out risks — verify before purchase.',
+      relevanceScore: 0.6,
+    };
+  }
+
   return { ...product, safetyStatus: 'safe', relevanceScore: 1.0 };
+}
 }

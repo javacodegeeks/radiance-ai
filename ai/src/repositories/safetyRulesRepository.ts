@@ -32,6 +32,7 @@ export async function findSafetyViolations(
          END`,
       [ingredients, conditions],
     );
+    console.log(`[safetyRules] ${result.rows.length} violation(s) for conditions=[${conditions.join(', ')}]`);
     return result.rows;
   } catch (err) {
     throw new RepositoryError('safetyRules', 'Failed to query safety violations', err);

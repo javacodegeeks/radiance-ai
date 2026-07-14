@@ -15,6 +15,7 @@ You must respond with a valid JSON object matching the schema below — no markd
 Schema:
 {
   "questions": string[],          // 1-3 focused natural questions. Empty array [] if no more info needed.
+  "evidenceQuery": string|null,   // PubMed search query if clinical evidence would help clarify (null otherwise)
   "queryRefinement": {
     "refinedIssue": string,       // Detailed description of the issue
     "bodyArea": string,           // e.g. "face", "scalp", "hands"
@@ -40,7 +41,8 @@ Rules:
 - Priority 2: Collect safety-critical profile fields (country, allergies) only when relevant
 - Ask at most 3 questions per turn
 - Set queryReady=true only when refinedIssue, bodyArea, and at least one goal are known
-- Set profileComplete=true only when country and allergies are both present in profileUpdates or already in the profile`;
+- Set profileComplete=true only when country and allergies are both present in profileUpdates or already in the profile
+- Set evidenceQuery to a PubMed search string when comparing treatment efficacy, validating ingredient safety claims, or when published research would materially improve your questions (null in all other cases)`;
 
 // ─── Recommender ──────────────────────────────────────────────────────────────
 
