@@ -12,15 +12,15 @@ const MODEL = process.env.LLM_MODEL!;
 
 const PRESETS = {
   /** Deterministic JSON extraction — clarify user concern and profile. */
-  questioner:    { model: MODEL, temperature: 0,   max_tokens: 2048 },
+  questioner: { model: MODEL, temperature: 0, max_tokens: 2048 },
   /** Slightly creative — personalised product explanations. */
-  recommender:   { model: MODEL, temperature: 0.3, max_tokens: 2048 },
+  recommender: { model: MODEL, temperature: 0.3, max_tokens: 2048 },
   /** Short deterministic extraction — brand name from web content. */
-  webResearcher: { model: MODEL, temperature: 0,   max_tokens: 50   },
+  webResearcher: { model: MODEL, temperature: 0, max_tokens: 100 },
   /** Short deterministic extraction — INCI ingredient list from query. */
-  inci:          { model: MODEL, temperature: 0,   max_tokens: 300  },
+  inci: { model: MODEL, temperature: 0, max_tokens: 800 },
   /** Deterministic — query-focused summary of retrieved PubMed abstracts. */
-  evidenceSummary: { model: MODEL, temperature: 0, max_tokens: 800  },
+  evidenceSummary: { model: MODEL, temperature: 0, max_tokens: 800 },
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ export async function chatCompletion(
   const res = await fetch(`${process.env.LITELLM_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
-      'Content-Type':  'application/json',
+      'Content-Type': 'application/json',
       'Authorization': `Bearer ${process.env.LITELLM_API_KEY}`,
     },
     body: JSON.stringify({ ...PRESETS[preset], messages }),
