@@ -45,6 +45,24 @@ Rules:
 - Set evidenceQuery to a PubMed search string when comparing treatment efficacy, validating ingredient safety claims, or when published research would materially improve your questions (null in all other cases)
 - IMPORTANT: questions is not gated by queryReady/profileComplete. If you still want the user to answer something this turn — even a safety-relevant follow-up surfaced by PubMed evidence — put it in questions. The caller always pauses for the user when questions is non-empty, regardless of queryReady/profileComplete. Only leave questions empty ([]) when you truly have nothing further to ask right now.`;
 
+// ─── Evidence Summarizer ────────────────────────────────────────────────────────
+
+export const EVIDENCE_SUMMARY_SYSTEM = `You are an expert clinical evidence analyst. Given a search query and a list of PubMed articles (title + abstract), write a concise, query-focused summary for each article.
+Respond with a valid JSON object — no markdown, no extra text.
+
+Schema:
+{
+  "summaries": [
+    { "pmid": string, "summary": string }
+  ]
+}
+
+Rules:
+- Return exactly one entry per article provided, using its exact pmid
+- summary must be 2-3 sentences that state what the article actually found in relation to the query — effect size, comparison outcome, or safety signal — not a restatement of the background/objective
+- If the abstract has no reportable results (e.g. protocol-only, withdrawn), say so explicitly rather than inventing findings
+- Do not add information not present in the abstract`;
+
 // ─── Recommender ──────────────────────────────────────────────────────────────
 
 export const RECOMMENDER_SYSTEM = `You are an expert pharmacist. Given a user's health concern and a ranked list of products, write personalised explanations for each recommendation.

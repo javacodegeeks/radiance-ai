@@ -5,6 +5,7 @@ import { LlmCallError, SchemaParseError } from '../common/errors';
 import { FALLBACK_QUESTIONS } from '../config/profileQuestions';
 import { GraphStateType } from '../graph/state';
 import { searchClinicalEvidence } from '../tools/pubmed/searchClinicalEvidence';
+import { summarizeArticlesForQuery } from '../tools/pubmed/summarizeEvidence';
 import type { PubMedSearchResult } from '../tools/pubmed/types';
 import { normalizeAllergies } from '../common/allergyNormalizer';
 
@@ -134,7 +135,8 @@ Based on the above, respond with the JSON object.`;
 
       if (evidence.articles.length > 0) {
         console.log(`[questioner] retrieved ${evidence.articles.length} evidence articles`);
-        const evidenceText = formatEvidenceForPrompt(evidence);
+        const summaries = await summarizeArticlesForQuery(output.evidenceQuery, evidence.articles);
+        const evidenceText = formatEvidenceForPrompt(evidence, summaries);
 
         // Second LLM call: inject evidence and ask the model to refine its questions
         const refinedMessages: LlmMessage[] = [
@@ -172,20 +174,23 @@ Based on the above, respond with the JSON object.`;
 
 // ─── Evidence formatting ──────────────────────────────────────────────────────
 
-function formatEvidenceForPrompt(result: PubMedSearchResult): string {
+function formatEvidenceForPrompt(result: PubMedSearchResult, summaries: Map<string, string>): string {
   return result.articles
     .map((a, i) => {
       const authorStr = a.authors.length
         ? a.authors.slice(0, 3).join(', ') + (a.authors.length > 3 ? ' et al.' : '')
         : 'Unknown authors';
-      const abstractSnippet = a.abstract
-        ? a.abstract.slice(0, 400) + (a.abstract.length > 400 ? '...' : '')
-        : 'No abstract available';
+      // Prefer the query-focused LLM summary (captures actual findings); fall
+      // back to a truncated raw abstract if summarization failed for this article.
+      const findings = summaries.get(a.pmid)
+        ?? (a.abstract
+          ? a.abstract.slice(0, 400) + (a.abstract.length > 400 ? '...' : '')
+          : 'No abstract available');
       return (
         `[${i + 1}] ${a.title}\n` +
         `Authors: ${authorStr}\n` +
         `Journal: ${a.journal} (${a.publicationDate})\n` +
-        `Abstract: ${abstractSnippet}`
+        `Findings: ${findings}`
       );
     })
     .join('\n\n');
