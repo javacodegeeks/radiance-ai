@@ -49,6 +49,21 @@ const QuestionerOutputSchema = z.object({
 
 type QuestionerOutput = z.infer<typeof QuestionerOutputSchema>;
 
+/**
+ * Enforce hard invariants the LLM cannot be trusted to self-apply:
+ *  - max 3 questions per turn
+ *  - queryReady must be false whenever there are still questions pending —
+ *    "ready to search" and "still have follow-ups" are contradictory, but the
+ *    evidence-enriched call has been observed setting both true at once
+ *    (e.g. it decided it has enough to search AND wants a safety follow-up).
+ */
+function clampOutput(output: QuestionerOutput): void {
+  output.questions = output.questions.slice(0, 3);
+  if (output.questions.length > 0) {
+    output.queryReady = false;
+  }
+}
+
 // ─── Static fallback ──────────────────────────────────────────────────────────
 
 const CRITICAL_FIELDS: Array<keyof GraphStateType['userProfile']> = ['country', 'allergies'];
@@ -122,7 +137,7 @@ Based on the above, respond with the JSON object.`;
   let output: QuestionerOutput;
   try {
     output = QuestionerOutputSchema.parse(JSON.parse(stripJsonFences(raw)));
-    output.questions = output.questions.slice(0, 3);
+    clampOutput(output);
   } catch (err) {
     throw new SchemaParseError('questioner', 'LLM response failed schema validation', err);
   }
@@ -154,7 +169,7 @@ Based on the above, respond with the JSON object.`;
         try {
           const refinedRaw = await chatCompletion('questioner', refinedMessages);
           output = QuestionerOutputSchema.parse(JSON.parse(stripJsonFences(refinedRaw)));
-          output.questions = output.questions.slice(0, 3);
+          clampOutput(output);
           console.log('[questioner] evidence-enriched response parsed successfully');
         } catch {
           // Second call failure is non-fatal — proceed with the original output
