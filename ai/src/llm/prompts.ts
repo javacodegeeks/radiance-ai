@@ -42,7 +42,8 @@ Rules:
 - Ask at most 3 questions per turn
 - Set queryReady=true only when refinedIssue, bodyArea, and at least one goal are known
 - Set profileComplete=true only when country and allergies are both present in profileUpdates or already in the profile
-- Set evidenceQuery to a PubMed search string when comparing treatment efficacy, validating ingredient safety claims, or when published research would materially improve your questions (null in all other cases)`;
+- Set evidenceQuery to a PubMed search string when comparing treatment efficacy, validating ingredient safety claims, or when published research would materially improve your questions (null in all other cases)
+- IMPORTANT: questions is not gated by queryReady/profileComplete. If you still want the user to answer something this turn — even a safety-relevant follow-up surfaced by PubMed evidence — put it in questions. The caller always pauses for the user when questions is non-empty, regardless of queryReady/profileComplete. Only leave questions empty ([]) when you truly have nothing further to ask right now.`;
 
 // ─── Recommender ──────────────────────────────────────────────────────────────
 
