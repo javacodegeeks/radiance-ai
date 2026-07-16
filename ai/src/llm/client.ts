@@ -19,6 +19,8 @@ const PRESETS = {
   webResearcher: { model: MODEL, temperature: 0,   max_tokens: 50   },
   /** Short deterministic extraction — INCI ingredient list from query. */
   inci:          { model: MODEL, temperature: 0,   max_tokens: 300  },
+  /** Deterministic — query-focused summary of retrieved PubMed abstracts. */
+  evidenceSummary: { model: MODEL, temperature: 0, max_tokens: 800  },
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
