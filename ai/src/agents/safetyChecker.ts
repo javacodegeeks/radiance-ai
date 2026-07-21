@@ -1,6 +1,6 @@
 import { GraphStateType } from '../graph/state';
 import { Product, RecommendedProduct } from '../types';
-import { findSafetyViolations } from '../repositories/safetyRulesRepository';
+import { findSafetyViolations, getKnownContraindications } from '../repositories/safetyRulesRepository';
 import { RepositoryError } from '../common/errors';
 
 /**
@@ -28,10 +28,27 @@ export async function safetyCheckerAgent(
     ...(userProfile.conditions ?? []),
   ];
 
-  console.log(`[safetyChecker] checking ${allProducts.length} product(s) against conditions: [${userConditions.join(', ') || 'none'}]`);
+  // A reported allergy/condition that isn't a known contraindication tag at
+  // all (e.g. normalizeAllergies/normalizeConditions had no alias for it, and
+  // it also isn't a tag already in the DB) means the rule lookup below has
+  // *nothing* to check it against — "no violations found" in that case means
+  // "we don't have data for this," not "cleared." Default to true (favor
+  // caution) if the lookup itself fails, consistent with other safety-net
+  // fallbacks in this agent.
+  let hasUnrecognizedConditions = userConditions.length > 0;
+  if (userConditions.length > 0) {
+    try {
+      const knownTags = await getKnownContraindications();
+      hasUnrecognizedConditions = userConditions.some(c => !knownTags.has(c));
+    } catch (err) {
+      console.warn('[safetyChecker] failed to load known contraindication tags — defaulting to caution', err);
+    }
+  }
+
+  console.log(`[safetyChecker] checking ${allProducts.length} product(s) against conditions: [${userConditions.join(', ') || 'none'}] (unrecognized=${hasUnrecognizedConditions})`);
 
   const checked = await Promise.all(
-    allProducts.map(p => assessProduct(p, userConditions)),
+    allProducts.map(p => assessProduct(p, userConditions, hasUnrecognizedConditions)),
   );
 
   const safe    = checked.filter(p => p.safetyStatus !== 'unsafe');
@@ -44,6 +61,7 @@ export async function safetyCheckerAgent(
 async function assessProduct(
   product: Product,
   userConditions: string[],
+  hasUnrecognizedConditions: boolean,
 ): Promise<RecommendedProduct> {
   // Merge free-text INCI with structured allergen tags (e.g. OBF's EU fragrance
   // allergens) — allergens_tags is cleaner/more reliable than parsing raw INCI text.
@@ -92,6 +110,18 @@ async function assessProduct(
       safetyStatus: 'caution',
       safetyNotes:  violations.map(v => v.notes).filter(Boolean).join('; '),
       relevanceScore: 0.7,
+    };
+  }
+
+  // No known violations — but if something the user reported isn't a
+  // recognized contraindication tag at all, "no violations" means "not
+  // checked," not "cleared."
+  if (hasUnrecognizedConditions) {
+    return {
+      ...product,
+      safetyStatus: 'caution',
+      safetyNotes:  'Some reported allergies/conditions are not yet in our safety database — verify before purchase.',
+      relevanceScore: 0.6,
     };
   }
 

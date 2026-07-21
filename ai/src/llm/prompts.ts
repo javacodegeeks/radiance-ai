@@ -28,8 +28,8 @@ Schema:
   "profileUpdates": {
     "country": string,            // ISO 3166-1 alpha-2 country code (e.g. "US", "FR", "JP")
     "skinType": string,
-    "allergies": string[],        // Empty array means user confirmed no allergies
-    "conditions": string[],
+    "allergies": string[],        // Empty array means user confirmed no allergies. Prefer an exact tag from the "Known safety categories" list below when the user's allergy matches one; otherwise use their own wording.
+    "conditions": string[],       // Same tag-preference rule as allergies — prefer an exact known-category tag when it matches.
     "concerns": string[]
   },
   "queryReady": boolean,          // true when you understand the issue well enough to search

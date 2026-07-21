@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - '5432:5432'
+      - '5434:5432'
     volumes:
       - 'postgres_data:/var/lib/postgresql/data'
     healthcheck:
@@ -57,7 +57,7 @@ services:
       GEMINI_API_KEY: some_key
       XAI_API_KEY: some_key
       GROQ_API_KEY: some_key
-      LM_STUDIO_API_KEY: some_key
+      # LM_STUDIO_API_KEY: some_key
     ports:
       - '4000:4000'
     volumes:
