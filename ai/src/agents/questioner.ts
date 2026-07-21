@@ -7,7 +7,8 @@ import { GraphStateType } from '../graph/state';
 import { searchClinicalEvidence } from '../tools/pubmed/searchClinicalEvidence';
 import { summarizeArticlesForQuery } from '../tools/pubmed/summarizeEvidence';
 import type { PubMedSearchResult } from '../tools/pubmed/types';
-import { normalizeAllergies } from '../common/allergyNormalizer';
+import { normalizeAllergies, normalizeConditions } from '../common/allergyNormalizer';
+import { getKnownContraindications } from '../repositories/safetyRulesRepository';
 
 // ─── Structured output schema ─────────────────────────────────────────────────
 
@@ -112,10 +113,25 @@ async function runLlmQuestioner(
     concerns:   userProfile.concerns,
   });
 
+  // Hint the LLM towards the exact tags safety_rules already knows about, so
+  // free-text allergies/conditions ("mild aspirin allergy") land on the same
+  // tag ("aspirin_allergy") the rule lookup expects, instead of relying on
+  // post-hoc string matching in normalizeAllergies/normalizeConditions to
+  // guess from whatever phrasing survives. Sourced from the DB (not a second
+  // hardcoded list) so it stays in sync as the seed data grows.
+  let knownTags: string[] = [];
+  try {
+    knownTags = Array.from(await getKnownContraindications()).sort();
+  } catch (err) {
+    console.warn('[questioner] failed to load known contraindication tags — proceeding without tag hints', err);
+  }
+
   console.log('[questioner] prompt=QUESTIONER_SYSTEM');
   const userPrompt = `User's Query: "${userQuery}"
 
 Existing Profile: ${profileSummary}
+
+Known safety categories — if an allergy/condition the user mentions matches one of these, use this exact tag in profileUpdates.allergies/conditions; otherwise use the user's own wording: ${knownTags.length ? knownTags.join(', ') : '(none available)'}
 
 Conversation History:
 ${historyText || '(no history yet)'}
@@ -284,7 +300,7 @@ function buildStateUpdate(
     ...normalizedCountry != null && { country:    normalizedCountry },
     ...p.skinType   != null && { skinType:   p.skinType },
     ...p.allergies  != null && { allergies:  normalizeAllergies(p.allergies) },
-    ...p.conditions != null && { conditions: p.conditions },
+    ...p.conditions != null && { conditions: normalizeConditions(p.conditions) },
     ...p.concerns   != null && { concerns:   p.concerns },
   };
 

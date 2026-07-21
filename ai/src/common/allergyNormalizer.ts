@@ -58,8 +58,38 @@ const ALLERGY_ALIAS_TO_TAG: Record<string, string> = {
   'aspirin allergy': 'aspirin_allergy',
 };
 
+// conditions relevant to contraindications currently seeded in `safety_rules`
+// (see data/pipeline/02-seed-safety.ts). Deliberately narrow — unmapped terms
+// pass through unchanged so they're not silently dropped, and the safety
+// checker treats "not in this map, and not a known DB tag" as caution, not
+// a cleared result (see MIN_RELIABLE_INGREDIENT_COUNT-style handling in
+// ai/src/agents/safetyChecker.ts).
+const CONDITION_ALIAS_TO_TAG: Record<string, string> = {
+  // pregnancy
+  pregnant: 'pregnancy', pregnancy: 'pregnancy', 'expecting a baby': 'pregnancy', expecting: 'pregnancy',
+
+  // rosacea
+  rosacea: 'rosacea',
+};
+
 function normalizeForLookup(name: string): string {
   return name.trim().toLowerCase();
+}
+
+function normalize(
+  values: string | string[] | null | undefined,
+  aliasMap: Record<string, string>,
+): string[] {
+  if (!values) return [];
+
+  const entries = (typeof values === 'string' ? values.split(',') : values)
+    .map(entry => String(entry).trim())
+    .filter(Boolean);
+
+  return entries.map(entry => {
+    const key = normalizeForLookup(entry);
+    return aliasMap[key] ?? key;
+  });
 }
 
 /**
@@ -68,14 +98,15 @@ function normalizeForLookup(name: string): string {
  * known mapping are kept as-is (lowercased) rather than dropped.
  */
 export function normalizeAllergies(allergies: string | string[] | null | undefined): string[] {
-  if (!allergies) return [];
+  return normalize(allergies, ALLERGY_ALIAS_TO_TAG);
+}
 
-  const entries = (typeof allergies === 'string' ? allergies.split(',') : allergies)
-    .map(entry => String(entry).trim())
-    .filter(Boolean);
-
-  return entries.map(entry => {
-    const key = normalizeForLookup(entry);
-    return ALLERGY_ALIAS_TO_TAG[key] ?? key;
-  });
+/**
+ * Same normalization as normalizeAllergies, for medical conditions (e.g.
+ * "I am pregnant" -> "pregnancy"). Conditions previously bypassed
+ * normalization entirely, which is the same lexical-mismatch risk allergies
+ * had, but with no mitigation at all.
+ */
+export function normalizeConditions(conditions: string | string[] | null | undefined): string[] {
+  return normalize(conditions, CONDITION_ALIAS_TO_TAG);
 }
