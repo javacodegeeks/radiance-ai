@@ -1,6 +1,7 @@
 import { GraphStateType } from '../graph/state';
-import { Product, RecommendedProduct } from '../types';
+import { CosingRestriction, Product, RecommendedProduct } from '../types';
 import { findSafetyViolations, getKnownContraindications } from '../repositories/safetyRulesRepository';
+import { findCosingRestrictions } from '../repositories/cosingRestrictionsRepository';
 import { RepositoryError } from '../common/errors';
 
 /**
@@ -95,6 +96,13 @@ async function assessProduct(
     v => v.severity === 'critical' || v.severity === 'high',
   );
 
+  // EU-regulated (CosIng Annex III) restrictions apply regardless of the
+  // user's specific allergies/conditions — a general caution signal, not a
+  // condition-specific violation. Non-fatal: failure here shouldn't override
+  // the allergy-based verdict already computed above.
+  const cosingRestrictions = await checkCosingRestrictions(ingredientSignals, product.name);
+  const cosingNote = describeCosingRestrictions(cosingRestrictions);
+
   if (hasCriticalOrHigh) {
     return {
       ...product,
@@ -108,7 +116,7 @@ async function assessProduct(
     return {
       ...product,
       safetyStatus: 'caution',
-      safetyNotes:  violations.map(v => v.notes).filter(Boolean).join('; '),
+      safetyNotes:  [violations.map(v => v.notes).filter(Boolean).join('; '), cosingNote].filter(Boolean).join(' '),
       relevanceScore: 0.7,
     };
   }
@@ -120,7 +128,7 @@ async function assessProduct(
     return {
       ...product,
       safetyStatus: 'caution',
-      safetyNotes:  'Some reported allergies/conditions are not yet in our safety database — verify before purchase.',
+      safetyNotes:  ['Some reported allergies/conditions are not yet in our safety database — verify before purchase.', cosingNote].filter(Boolean).join(' '),
       relevanceScore: 0.6,
     };
   }
@@ -131,10 +139,37 @@ async function assessProduct(
     return {
       ...product,
       safetyStatus: 'caution',
-      safetyNotes:  'Ingredient data is too sparse to confidently rule out risks — verify before purchase.',
+      safetyNotes:  ['Ingredient data is too sparse to confidently rule out risks — verify before purchase.', cosingNote].filter(Boolean).join(' '),
       relevanceScore: 0.6,
     };
   }
 
+  if (cosingRestrictions.length) {
+    return {
+      ...product,
+      safetyStatus: 'caution',
+      safetyNotes:  cosingNote,
+      relevanceScore: 0.7,
+    };
+  }
+
   return { ...product, safetyStatus: 'safe', relevanceScore: 1.0 };
+}
+
+async function checkCosingRestrictions(ingredientSignals: string[], productName: string): Promise<CosingRestriction[]> {
+  try {
+    return await findCosingRestrictions(ingredientSignals);
+  } catch (err) {
+    console.warn(`[safetyChecker] CosIng restriction lookup failed for "${productName}" — skipping this check`, err);
+    return [];
+  }
+}
+
+function describeCosingRestrictions(restrictions: CosingRestriction[]): string {
+  if (!restrictions.length) return '';
+  const parts = restrictions.map(r => {
+    const detail = r.maxConcentration ? `max concentration ${r.maxConcentration}` : 'usage restrictions apply';
+    return `${r.ingredient} is EU-regulated (CosIng Annex III #${r.referenceNumber}, ${detail})`;
+  });
+  return `${parts.join('; ')}.`;
 }

@@ -49,6 +49,17 @@ export interface SafetyRule {
   notes?: string;
 }
 
+/** EU CosIng Annex III entry — a regulated ingredient with usage restrictions. */
+export interface CosingRestriction {
+  id: string;
+  ingredient: string;
+  referenceNumber: string;
+  restrictionScope?: string;
+  maxConcentration?: string;
+  conditionsText?: string;
+  regulation?: string;
+}
+
 export interface RecommendedProduct extends Product {
   safetyStatus: 'safe' | 'caution' | 'unsafe';
   safetyNotes?: string;
