@@ -1,7 +1,7 @@
 import { GraphStateType } from '../graph/state';
-import { CosingRestriction, Product, RecommendedProduct } from '../types';
+import { CosingProhibitedSubstance, CosingRestriction, Product, RecommendedProduct } from '../types';
 import { findSafetyViolations, getKnownContraindications } from '../repositories/safetyRulesRepository';
-import { findCosingRestrictions } from '../repositories/cosingRestrictionsRepository';
+import { findCosingRestrictions, findProhibitedSubstances } from '../repositories/cosingRestrictionsRepository';
 import { RepositoryError } from '../common/errors';
 
 /**
@@ -96,7 +96,21 @@ async function assessProduct(
     v => v.severity === 'critical' || v.severity === 'high',
   );
 
-  // EU-regulated (CosIng Annex III) restrictions apply regardless of the
+  // EU CosIng Annex II — substances prohibited outright in cosmetic products.
+  // A stronger signal than an allergy-based violation: this is a hard block
+  // regardless of the user's profile. Non-fatal: failure here shouldn't
+  // override the allergy-based verdict already computed above.
+  const prohibitedSubstances = await checkProhibitedSubstances(ingredientSignals, product.name);
+  if (prohibitedSubstances.length) {
+    return {
+      ...product,
+      safetyStatus: 'unsafe',
+      safetyNotes:  describeProhibitedSubstances(prohibitedSubstances),
+      relevanceScore: 0,
+    };
+  }
+
+  // EU-regulated (CosIng Annex III/IV/V) restrictions apply regardless of the
   // user's specific allergies/conditions — a general caution signal, not a
   // condition-specific violation. Non-fatal: failure here shouldn't override
   // the allergy-based verdict already computed above.
@@ -165,11 +179,28 @@ async function checkCosingRestrictions(ingredientSignals: string[], productName:
   }
 }
 
+async function checkProhibitedSubstances(ingredientSignals: string[], productName: string): Promise<CosingProhibitedSubstance[]> {
+  try {
+    return await findProhibitedSubstances(ingredientSignals);
+  } catch (err) {
+    console.warn(`[safetyChecker] CosIng prohibited-substance lookup failed for "${productName}" — skipping this check`, err);
+    return [];
+  }
+}
+
 function describeCosingRestrictions(restrictions: CosingRestriction[]): string {
   if (!restrictions.length) return '';
   const parts = restrictions.map(r => {
-    const detail = r.maxConcentration ? `max concentration ${r.maxConcentration}` : 'usage restrictions apply';
-    return `${r.ingredient} is EU-regulated (CosIng Annex III #${r.referenceNumber}, ${detail})`;
+    // Annex IV's "max concentration" column sometimes holds descriptive usage
+    // text (e.g. "Rinse-off product") rather than a numeric percentage, so
+    // this can't be labelled as a concentration unconditionally.
+    const detail = r.maxConcentration || r.restrictionScope || 'usage restrictions apply';
+    return `${r.ingredient} is EU-regulated (CosIng Annex ${r.annex} #${r.referenceNumber}, ${detail})`;
   });
+  return `${parts.join('; ')}.`;
+}
+
+function describeProhibitedSubstances(substances: CosingProhibitedSubstance[]): string {
+  const parts = substances.map(s => `${s.ingredient} is prohibited in cosmetic products under EU law (CosIng Annex II #${s.referenceNumber})`);
   return `${parts.join('; ')}.`;
 }

@@ -49,15 +49,25 @@ export interface SafetyRule {
   notes?: string;
 }
 
-/** EU CosIng Annex III entry — a regulated ingredient with usage restrictions. */
+/** EU CosIng Annex III/IV/V entry — a regulated ingredient allowed with usage restrictions. */
 export interface CosingRestriction {
   id: string;
   ingredient: string;
+  annex: string;
   referenceNumber: string;
   restrictionScope?: string;
   maxConcentration?: string;
   conditionsText?: string;
   regulation?: string;
+}
+
+/** EU CosIng Annex II entry — a substance prohibited outright in cosmetic products. */
+export interface CosingProhibitedSubstance {
+  id: string;
+  ingredient: string;
+  referenceNumber: string;
+  regulation?: string;
+  cmr?: string;
 }
 
 export interface RecommendedProduct extends Product {
