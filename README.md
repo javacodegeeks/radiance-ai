@@ -82,6 +82,8 @@ radiance-ai/
 │   │   │   └── profileQuestions.ts
 │   │   ├── common/
 │   │   │   ├── errors.ts             # Typed error hierarchy
+│   │   │   ├── requestContext.ts     # AsyncLocalStorage — per-request correlation ID
+│   │   │   ├── logger.ts             # Patches console.* to prefix logs with [req=...]
 │   │   │   ├── allergyNormalizer.ts  # Free-text allergy/condition → known tags
 │   │   │   └── inci.ts               # INCI ingredient parsing helpers
 │   │   ├── tools/
@@ -121,7 +123,8 @@ radiance-ai/
 │   │   ├── 003_user_profiles.sql    # user_sessions, conversation_history
 │   │   ├── 004_session_state.sql    # adds phase/profile/questioning to user_sessions
 │   │   ├── 005_cosing_restrictions.sql   # cosing_restrictions table (Annex III/IV/V)
-│   │   └── 006_cosing_prohibited.sql     # cosing_prohibited_substances table (Annex II)
+│   │   ├── 006_cosing_prohibited.sql     # cosing_prohibited_substances table (Annex II)
+│   │   └── 007_conversation_history_request_id.sql # request_id column on conversation_history
 │   ├── .env
 │   ├── .env.example
 │   ├── package.json
@@ -308,6 +311,7 @@ sequenceDiagram
     participant Data as Qdrant / Mongo / Postgres
 
     Client->>Controller: POST /api/chat {sessionId, message}
+    Controller->>Controller: generate requestId, set X-Request-Id header
     Controller->>Service: handle(sessionId, message)
     Service->>Store: getSession(sessionId)
     Store-->>Service: phase, profile, history
@@ -355,6 +359,9 @@ sequenceDiagram
 ```
 
 Multi-turn conversations are stateless on the server between requests — all state (`phase`, `profile`, `questioning`, conversation history) round-trips through PostgreSQL via `sessionStore.ts`, keyed by `sessionId`. A new server instance can pick up any in-flight session.
+
+**Request correlation**
+`chatController` generates a short request ID per HTTP call and returns it via the `X-Request-Id` response header. The ID is propagated through the rest of the call — supervisor, questioner, productFinder, safetyChecker, recommender, and all repositories — via `AsyncLocalStorage` (`common/requestContext.ts`), and `common/logger.ts` patches `console.log`/`warn`/`error`/`debug` once at startup to prefix every log line with `[req=<id>]`. This means one chat turn's logs across every layer can be grepped together with no code changes required at the call sites. The same ID is also persisted on the corresponding `conversation_history` row (`request_id` column), so a past turn's logs can be found from the database and vice versa. Unlike `sessionId` (client-generated, ties an entire conversation together), `requestId` is server-generated per HTTP call and identifies a single turn.
 
 ---
 
