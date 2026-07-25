@@ -7,6 +7,7 @@
 
 import { getDb } from '../infra/db';
 import { RepositoryError } from '../common/errors';
+import { getRequestId } from '../common/requestContext';
 
 export interface CollectedProfile {
   userQuery: string;
@@ -112,9 +113,9 @@ export async function appendMessage(
   const db = getDb();
   try {
     await db.query(
-      `INSERT INTO conversation_history (session_id, role, content)
-       VALUES ($1, $2, $3)`,
-      [sessionId, role, content],
+      `INSERT INTO conversation_history (session_id, role, content, request_id)
+       VALUES ($1, $2, $3, $4)`,
+      [sessionId, role, content, getRequestId() ?? null],
     );
   } catch (err) {
     console.error(`[sessionStore] appendMessage failed session=${sessionId} role=${role}`, err);

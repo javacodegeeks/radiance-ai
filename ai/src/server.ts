@@ -1,6 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import { chatRouter } from './controllers/chatController';
+import { installRequestIdLogging } from './common/logger';
+
+installRequestIdLogging();
 
 const app = express();
 const PORT = process.env.PORT;
