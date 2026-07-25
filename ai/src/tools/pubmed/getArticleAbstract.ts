@@ -26,6 +26,7 @@ export const getArticleAbstractTool = tool(
       return JSON.stringify(results);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error('[pubmed] getArticleAbstract tool failed', err);
       return JSON.stringify({ error: `getArticleAbstract failed: ${msg}` });
     }
   },

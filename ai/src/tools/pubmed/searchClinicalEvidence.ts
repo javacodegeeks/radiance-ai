@@ -110,6 +110,7 @@ export const searchClinicalEvidenceTool = tool(
       return JSON.stringify(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[pubmed] searchClinicalEvidence tool failed query="${input.query}"`, err);
       return JSON.stringify({
         error:    `searchClinicalEvidence failed: ${msg}`,
         query:    input.query,

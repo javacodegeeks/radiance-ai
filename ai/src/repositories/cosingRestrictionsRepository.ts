@@ -63,8 +63,10 @@ export async function findCosingRestrictions(ingredients: string[]): Promise<Cos
        WHERE ingredient = ANY($1::text[])`,
       [normalizedIngredients],
     );
+    console.log(`[cosingRestrictions] ${result.rows.length} restriction(s) matched`);
     return result.rows.map(toRestriction);
   } catch (err) {
+    console.error('[cosingRestrictions] query failed', err);
     throw new RepositoryError('cosingRestrictions', 'Failed to query CosIng restrictions', err);
   }
 }
@@ -87,8 +89,10 @@ export async function findProhibitedSubstances(ingredients: string[]): Promise<C
        WHERE ingredient = ANY($1::text[])`,
       [normalizedIngredients],
     );
+    console.log(`[cosingProhibitedSubstances] ${result.rows.length} prohibited substance(s) matched`);
     return result.rows.map(toProhibited);
   } catch (err) {
+    console.error('[cosingProhibitedSubstances] query failed', err);
     throw new RepositoryError('cosingProhibitedSubstances', 'Failed to query CosIng prohibited substances', err);
   }
 }
