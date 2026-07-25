@@ -70,6 +70,23 @@ export interface CosingProhibitedSubstance {
   cmr?: string;
 }
 
+/**
+ * Structured output of the two-layer safety checker (see agents/safetyChecker.ts):
+ *   hardBlocks — Layer 1 deterministic hard blocks (prohibited substance /
+ *     critical-or-high severity violation). Layer 2 never sees these and
+ *     cannot move a product out of this bucket.
+ *   softWarnings — kept, but flagged: either a Layer 1 signal that isn't an
+ *     automatic hard block (medium/low violation, EU usage restriction,
+ *     sparse data, unrecognized condition) that Layer 2 judged worth keeping
+ *     as a caution, or one Layer 2 couldn't clear (LLM call failed/timed out).
+ *   approved — no signals at all, or a Layer 1 signal Layer 2 judged safe to clear.
+ */
+export interface SafetyReport {
+  approved: RecommendedProduct[];
+  softWarnings: RecommendedProduct[];
+  hardBlocks: RecommendedProduct[];
+}
+
 export interface RecommendedProduct extends Product {
   safetyStatus: 'safe' | 'caution' | 'unsafe';
   safetyNotes?: string;

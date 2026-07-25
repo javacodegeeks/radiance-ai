@@ -21,6 +21,8 @@ const PRESETS = {
   inci: { model: MODEL, temperature: 0, max_tokens: 800 },
   /** Deterministic — query-focused summary of retrieved PubMed abstracts. */
   evidenceSummary: { model: MODEL, temperature: 0, max_tokens: 800 },
+  /** Deterministic — contextual review of safety-flagged products (Layer 2, see agents/safetyChecker.ts). */
+  safetyChecker: { model: MODEL, temperature: 0, max_tokens: 2048 },
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
