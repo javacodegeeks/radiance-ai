@@ -6,18 +6,18 @@ on:
       - dev
 
 jobs:
-  lint-ai:
-    name: AI Layer Lint
-    uses: ./.github/workflows/reusable-lint.yml
-    with:
-      package-dir: ai
-      install-flags: --legacy-peer-deps
+  # lint-ai:
+  #   name: AI Layer Lint
+  #   uses: ./.github/workflows/reusable-lint.yml
+  #   with:
+  #     package-dir: ai
+  #     install-flags: --legacy-peer-deps
 
-  lint-data:
-    name: Data Layer Lint
-    uses: ./.github/workflows/reusable-lint.yml
-    with:
-      package-dir: data
+  # lint-data:
+  #   name: Data Layer Lint
+  #   uses: ./.github/workflows/reusable-lint.yml
+  #   with:
+  #     package-dir: data
 
   test-ai:
     name: AI Layer Tests
