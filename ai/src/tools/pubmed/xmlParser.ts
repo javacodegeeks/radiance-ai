@@ -114,6 +114,7 @@ export function parseAbstractsXml(xml: string): ParsedAbstract[] {
   try {
     root = parser.parse(xml) as ParsedXmlRoot;
   } catch (err) {
+    console.error('[pubmed] efetch XML parsing failed', err);
     throw new PubMedError(
       'PARSE_ERROR',
       `XML parsing failed: ${String(err)}`,

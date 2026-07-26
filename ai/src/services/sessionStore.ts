@@ -6,6 +6,8 @@
  */
 
 import { getDb } from '../infra/db';
+import { RepositoryError } from '../common/errors';
+import { getRequestId } from '../common/requestContext';
 
 export interface CollectedProfile {
   userQuery: string;
@@ -40,17 +42,23 @@ export interface Session {
 
 export async function getSession(id: string): Promise<Session | undefined> {
   const db = getDb();
-  const { rows } = await db.query<{
-    session_id: string;
-    phase: SessionPhase;
-    profile: CollectedProfile | null;
-    questioning: QuestioningState | null;
-    created_at: Date;
-  }>(
-    `SELECT session_id, phase, profile, questioning, created_at
-     FROM user_sessions WHERE session_id = $1`,
-    [id],
-  );
+  let rows;
+  try {
+    ({ rows } = await db.query<{
+      session_id: string;
+      phase: SessionPhase;
+      profile: CollectedProfile | null;
+      questioning: QuestioningState | null;
+      created_at: Date;
+    }>(
+      `SELECT session_id, phase, profile, questioning, created_at
+       FROM user_sessions WHERE session_id = $1`,
+      [id],
+    ));
+  } catch (err) {
+    console.error(`[sessionStore] getSession failed session=${id}`, err);
+    throw new RepositoryError('sessionStore', 'Failed to load session', err);
+  }
   if (!rows.length) return undefined;
   const row = rows[0];
   return {
@@ -66,16 +74,21 @@ export async function getSession(id: string): Promise<Session | undefined> {
 
 export async function setSession(id: string, session: Session): Promise<void> {
   const db = getDb();
-  await db.query(
-    `INSERT INTO user_sessions (session_id, phase, profile, questioning)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (session_id) DO UPDATE
-       SET phase       = EXCLUDED.phase,
-           profile     = EXCLUDED.profile,
-           questioning = EXCLUDED.questioning,
-           updated_at  = NOW()`,
-    [id, session.phase, JSON.stringify(session.profile), JSON.stringify(session.questioning)],
-  );
+  try {
+    await db.query(
+      `INSERT INTO user_sessions (session_id, phase, profile, questioning)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (session_id) DO UPDATE
+         SET phase       = EXCLUDED.phase,
+             profile     = EXCLUDED.profile,
+             questioning = EXCLUDED.questioning,
+             updated_at  = NOW()`,
+      [id, session.phase, JSON.stringify(session.profile), JSON.stringify(session.questioning)],
+    );
+  } catch (err) {
+    console.error(`[sessionStore] setSession failed session=${id} phase=${session.phase}`, err);
+    throw new RepositoryError('sessionStore', 'Failed to persist session', err);
+  }
 }
 
 export async function createSession(id: string): Promise<Session> {
@@ -98,9 +111,14 @@ export async function appendMessage(
   content: string,
 ): Promise<void> {
   const db = getDb();
-  await db.query(
-    `INSERT INTO conversation_history (session_id, role, content)
-     VALUES ($1, $2, $3)`,
-    [sessionId, role, content],
-  );
+  try {
+    await db.query(
+      `INSERT INTO conversation_history (session_id, role, content, request_id)
+       VALUES ($1, $2, $3, $4)`,
+      [sessionId, role, content, getRequestId() ?? null],
+    );
+  } catch (err) {
+    console.error(`[sessionStore] appendMessage failed session=${sessionId} role=${role}`, err);
+    throw new RepositoryError('sessionStore', 'Failed to append conversation message', err);
+  }
 }

@@ -33,6 +33,7 @@ export const searchPubMedTool = tool(
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[pubmed] searchPubMed tool failed query="${input.query}"`, err);
       return JSON.stringify({ error: `searchPubMed failed: ${msg}`, query: input.query });
     }
   },

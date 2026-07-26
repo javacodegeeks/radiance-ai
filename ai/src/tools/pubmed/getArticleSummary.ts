@@ -23,6 +23,7 @@ export const getArticleSummaryTool = tool(
       return JSON.stringify(results);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error('[pubmed] getArticleSummary tool failed', err);
       return JSON.stringify({ error: `getArticleSummary failed: ${msg}` });
     }
   },

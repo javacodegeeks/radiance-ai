@@ -1,5 +1,5 @@
 import { Annotation } from '@langchain/langgraph';
-import { AgentStep, Message, Product, QueryContext, RecommendedProduct, UserProfile } from '../types';
+import { AgentStep, Message, Product, QueryContext, RecommendedProduct, SafetyReport, UserProfile } from '../types';
 
 export const GraphState = Annotation.Root({
   sessionId: Annotation<string>({
@@ -45,6 +45,11 @@ export const GraphState = Annotation.Root({
   safetyCheckedProducts: Annotation<RecommendedProduct[]>({
     reducer: (_, b) => b,
     default: () => [],
+  }),
+  /** Structured Layer 1 + Layer 2 safety-checker output — see agents/safetyChecker.ts. */
+  safetyReport: Annotation<SafetyReport>({
+    reducer: (_, b) => b,
+    default: () => ({ approved: [], softWarnings: [], hardBlocks: [] }),
   }),
   finalRecommendations: Annotation<RecommendedProduct[]>({
     reducer: (_, b) => b,
