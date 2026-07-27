@@ -1,5 +1,5 @@
 import { Annotation } from '@langchain/langgraph';
-import { AgentStep, Message, Product, RecommendedProduct, UserProfile } from '../types';
+import { AgentStep, Message, Product, QueryContext, RecommendedProduct, SafetyReport, UserProfile } from '../types';
 
 export const GraphState = Annotation.Root({
   sessionId: Annotation<string>({
@@ -7,6 +7,11 @@ export const GraphState = Annotation.Root({
   }),
   userQuery: Annotation<string>({
     reducer: (_, b) => b,
+  }),
+  queryContext: Annotation<Partial<QueryContext>>({
+    // Merge partial updates so agents can patch individual fields
+    reducer: (a, b) => ({ ...a, ...b }),
+    default: () => ({}),
   }),
   userProfile: Annotation<Partial<UserProfile>>({
     // Merge partial updates so agents can patch individual fields
@@ -25,6 +30,10 @@ export const GraphState = Annotation.Root({
     reducer: (_, b) => b,
     default: () => false,
   }),
+   queryReady: Annotation<boolean>({
+    reducer: (_, b) => b,
+    default: () => false,
+  }),
   webResults: Annotation<Product[]>({
     reducer: (_, b) => b,
     default: () => [],
@@ -36,6 +45,11 @@ export const GraphState = Annotation.Root({
   safetyCheckedProducts: Annotation<RecommendedProduct[]>({
     reducer: (_, b) => b,
     default: () => [],
+  }),
+  /** Structured Layer 1 + Layer 2 safety-checker output — see agents/safetyChecker.ts. */
+  safetyReport: Annotation<SafetyReport>({
+    reducer: (_, b) => b,
+    default: () => ({ approved: [], softWarnings: [], hardBlocks: [] }),
   }),
   finalRecommendations: Annotation<RecommendedProduct[]>({
     reducer: (_, b) => b,

@@ -1,0 +1,17 @@
+# CODEOWNERS
+# Each line is a file pattern followed by one or more owners.
+# Order matters — the last matching pattern takes precedence.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owners — all files require review from at least one of these
+* @beena-yatin-kanyal @kioub78 @omoz4real
+
+# AI orchestration layer
+/ai/ @beena-yatin-kanyal @kioub78 @omoz4real
+
+# Data layer
+/data/ @beena-yatin-kanyal @kioub78 @omoz4real
+
+# Infrastructure & CI
+/docker/ @beena-yatin-kanyal @kioub78
+/.github/ @beena-yatin-kanyal @kioub78

@@ -1,0 +1,36 @@
+# name: PR Approval Check
+#
+# on:
+#   pull_request:
+#     branches:
+#       - dev
+#     types: [opened, synchronize, reopened]
+#   pull_request_review:
+#     types: [submitted, dismissed]
+#
+# permissions:
+#   pull-requests: read
+#   statuses: write
+#
+# jobs:
+#   check-approval:
+#     name: Require 1 Approval
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Check for required approval
+#         uses: actions/github-script@v7
+#         with:
+#           script: |
+#             const { data: reviews } = await github.rest.pulls.listReviews({
+#               owner: context.repo.owner,
+#               repo:  context.repo.repo,
+#               pull_number: context.issue.number,
+#             });
+#
+#             const approvals = reviews.filter(r => r.state === 'APPROVED');
+#
+#             if (approvals.length >= 1) {
+#               core.info(`PR has ${approvals.length} approval(s). Check passed.`);
+#             } else {
+#               core.setFailed('At least 1 approval is required before merging.');
+#             }

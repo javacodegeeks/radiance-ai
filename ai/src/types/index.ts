@@ -1,7 +1,19 @@
 // ─── Core domain types ────────────────────────────────────────────────────────
 
+export interface QueryContext {
+  /** Detailed description of the issue after clarification by the Questioner */
+  refinedIssue: string;
+  /** Body area targeted: face, scalp, hands, body, etc. */
+  bodyArea?: string;
+  severity?: 'mild' | 'moderate' | 'severe';
+  duration?: string;
+  triggers?: string[];
+  previousTreatments?: string[];
+  /** e.g. "reduce redness", "hydrate", "stop hair loss" */
+  goals: string[];
+}
+
 export interface UserProfile {
-  sessionId: string;
   country?: string;
   skinType?: string;
   /** Normalised ingredient names the user is allergic to, e.g. 'fragrance', 'nut_allergy' */
@@ -10,9 +22,6 @@ export interface UserProfile {
   conditions?: string[];
   /** Stated cosmetic concerns: 'acne', 'dryness', 'hair_loss', etc. */
   concerns?: string[];
-  consentGiven: boolean;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 export interface Product {
@@ -23,6 +32,10 @@ export interface Product {
   inci: string[];
   categories: string[];
   countryAvailability: string[];
+  /** Product claims, e.g. 'hypoallergenic', 'fragrance free', 'vegan' */
+  labels?: string[];
+  /** Structured allergen tags (e.g. EU fragrance allergens like 'linalool', 'limonene') — more reliable than free-text INCI parsing */
+  allergens?: string[];
   sourceUrl?: string;
   embedding?: number[];
   cachedAt?: Date;
@@ -36,12 +49,56 @@ export interface SafetyRule {
   notes?: string;
 }
 
+/** EU CosIng Annex III/IV/V entry — a regulated ingredient allowed with usage restrictions. */
+export interface CosingRestriction {
+  id: string;
+  ingredient: string;
+  annex: string;
+  referenceNumber: string;
+  restrictionScope?: string;
+  maxConcentration?: string;
+  conditionsText?: string;
+  regulation?: string;
+}
+
+/** EU CosIng Annex II entry — a substance prohibited outright in cosmetic products. */
+export interface CosingProhibitedSubstance {
+  id: string;
+  ingredient: string;
+  referenceNumber: string;
+  regulation?: string;
+  cmr?: string;
+}
+
+/**
+ * Structured output of the two-layer safety checker (see agents/safetyChecker.ts):
+ *   hardBlocks — Layer 1 deterministic hard blocks (prohibited substance /
+ *     critical-or-high severity violation). Layer 2 never sees these and
+ *     cannot move a product out of this bucket.
+ *   softWarnings — kept, but flagged: either a Layer 1 signal that isn't an
+ *     automatic hard block (medium/low violation, EU usage restriction,
+ *     sparse data, unrecognized condition) that Layer 2 judged worth keeping
+ *     as a caution, or one Layer 2 couldn't clear (LLM call failed/timed out).
+ *   approved — no signals at all, or a Layer 1 signal Layer 2 judged safe to clear.
+ */
+export interface SafetyReport {
+  approved: RecommendedProduct[];
+  softWarnings: RecommendedProduct[];
+  hardBlocks: RecommendedProduct[];
+}
+
 export interface RecommendedProduct extends Product {
   safetyStatus: 'safe' | 'caution' | 'unsafe';
   safetyNotes?: string;
   /** 0–1 composite score combining safety and query relevance */
   relevanceScore: number;
   availabilityNotes?: string;
+  /** Why this product addresses the user's specific issue */
+  relevanceToQuery?: string;
+  /** Detailed reasoning behind the recommendation */
+  reasoning?: string;
+  /** How to use the product for best results */
+  usageTips?: string[];
 }
 
 export interface Message {
@@ -54,24 +111,10 @@ export interface Message {
 
 export type AgentStep =
   | 'interview'
-  | 'research'
+  | 'catalog_search'
+  | 'web_search'
   | 'safety_check'
   | 'recommend'
   | 'done'
   | 'error';
 
-export interface AgentState {
-  sessionId: string;
-  userQuery: string;
-  userProfile: Partial<UserProfile>;
-  conversationHistory: Message[];
-  pendingQuestions: string[];
-  profileComplete: boolean;
-  webResults: Product[];
-  catalogResults: Product[];
-  safetyCheckedProducts: RecommendedProduct[];
-  finalRecommendations: RecommendedProduct[];
-  currentStep: AgentStep;
-  iterationCount: number;
-  error?: string;
-}

@@ -42,3 +42,15 @@ CLAUDE.MD
 
 # Misc
 readmedocs/
+**/nbproject/
+
+package-lock.json
+
+openbeautyfacts-mongodbdump.gz
+openbeautyfacts-mongodbdump.gz.etag
+
+.next/
+
+data/.cache/
+
+docker/docker-compose.yml

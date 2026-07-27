@@ -1,0 +1,33 @@
+name: PR Tests
+
+on:
+  pull_request:
+    branches:
+      - dev
+
+jobs:
+  # lint-ai:
+  #   name: AI Layer Lint
+  #   uses: ./.github/workflows/reusable-lint.yml
+  #   with:
+  #     package-dir: ai
+  #     install-flags: --legacy-peer-deps
+
+  # lint-data:
+  #   name: Data Layer Lint
+  #   uses: ./.github/workflows/reusable-lint.yml
+  #   with:
+  #     package-dir: data
+
+  test-ai:
+    name: AI Layer Tests
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      package-dir: ai
+      install-flags: --legacy-peer-deps
+
+  test-data:
+    name: Data Layer Tests
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      package-dir: data
