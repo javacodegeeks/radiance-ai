@@ -13,7 +13,7 @@
 -- prohibited outright — a stronger signal, kept in a separate table).
 CREATE TABLE IF NOT EXISTS cosing_restrictions (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  ingredient        VARCHAR(255) NOT NULL,
+  ingredient        VARCHAR(500) NOT NULL,
   annex             VARCHAR(10)  NOT NULL,
   reference_number  VARCHAR(20)  NOT NULL,
   restriction_scope TEXT,
