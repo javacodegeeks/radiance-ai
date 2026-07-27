@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 CREATE TABLE IF NOT EXISTS conversation_history (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   session_id  VARCHAR(255) NOT NULL REFERENCES user_sessions (session_id) ON DELETE CASCADE,
+  request_id  VARCHAR(16),
   role        VARCHAR(20)  NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
   content     TEXT NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()

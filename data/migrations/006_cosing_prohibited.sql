@@ -6,10 +6,10 @@
 -- across the "Identified INGREDIENTS" example members.
 CREATE TABLE IF NOT EXISTS cosing_prohibited_substances (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  ingredient        VARCHAR(255) NOT NULL,
+  ingredient        TEXT NOT NULL,
   reference_number  VARCHAR(20)  NOT NULL,
   regulation        VARCHAR(255),
-  cmr               VARCHAR(50),
+  cmr               VARCHAR(100),
   source            VARCHAR(500) NOT NULL DEFAULT 'EU CosIng Annex II',
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
