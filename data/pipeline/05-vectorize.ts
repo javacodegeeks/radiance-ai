@@ -92,6 +92,36 @@ async function flushBatch(points: QdrantPoint[], synced: number): Promise<void> 
   console.log(`  Synced ${synced} products...`);
 }
 
+async function findExistingIds(ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const records = await qdrant.retrieve(COLLECTION_NAME, { ids, with_payload: false, with_vector: false });
+  return new Set(records.map(r => String(r.id)));
+}
+
+async function embedCandidate(product: Record<string, unknown>, qdrantId: string): Promise<QdrantPoint> {
+  const p = product;
+  const [vector, countries] = await Promise.all([
+    generateEmbedding(buildSearchableText(p)),
+    normalizeCountries((p['countries'] ?? p['countries_tags']) as string | string[] | undefined),
+  ]);
+  return {
+    id:      qdrantId,
+    vector,
+    payload: {
+      mongo_id:     String(p['_id'] ?? p['code']),
+      code:         p['code'],
+      product_name: p['product_name'] ?? p['product_name_en'],
+      brands:       normalizeData((p['brands'] ?? p['brands_tags']) as string | string[] | undefined),
+      categories:   normalizeData((p['categories'] ?? p['categories_tags']) as string | string[] | undefined),
+      ingredients:  normalizeData((p['ingredients_text'] ?? p['ingredients_text_en'] ?? p['ingredients_tags']) as string | string[] | undefined),
+      labels:       normalizeData(p['labels_tags'] as string | string[] | undefined),
+      countries,
+      product_type: p['product_type'],
+      completeness: p['completeness'],
+    },
+  };
+}
+
 export async function vectorizeProducts(limit = 0): Promise<void> {
   console.log(`  Initialising Qdrant collection...`);
   const dims = await initCollection();
@@ -102,9 +132,29 @@ export async function vectorizeProducts(limit = 0): Promise<void> {
   console.log(`  Products in MongoDB: ${total}`);
 
   const cursor = mongoDb.collection('products').find({});
-  let count    = 0;
-  const points: QdrantPoint[]         = [];
-  const batch:  Promise<QdrantPoint>[] = [];
+  let processed = 0;
+  let synced    = 0;
+  let skipped   = 0;
+  const points: QdrantPoint[] = [];
+  let candidates: Array<{ product: Record<string, unknown>; qdrantId: string }> = [];
+
+  const processCandidates = async (): Promise<void> => {
+    if (candidates.length === 0) return;
+    const batch = candidates;
+    candidates = [];
+
+    const existingIds = await findExistingIds(batch.map(c => c.qdrantId));
+    const toEmbed = batch.filter(c => !existingIds.has(c.qdrantId));
+    skipped += batch.length - toEmbed.length;
+
+    for (let i = 0; i < toEmbed.length; i += CONCURRENCY) {
+      const chunk = toEmbed.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(chunk.map(c => embedCandidate(c.product, c.qdrantId)));
+      points.push(...results);
+      synced += results.length;
+      if (points.length >= BATCH_SIZE) await flushBatch(points, synced);
+    }
+  };
 
   for await (const product of cursor) {
     const p = product as Record<string, unknown>;
@@ -114,49 +164,19 @@ export async function vectorizeProducts(limit = 0): Promise<void> {
     // recommender and have no consumer anywhere in ai/src.
     if (p['product_type'] === 'food') continue;
 
-    batch.push(
-      Promise.all([
-        generateEmbedding(buildSearchableText(p)),
-        normalizeCountries((p['countries'] ?? p['countries_tags']) as string | string[] | undefined),
-      ]).then(([vector, countries]): QdrantPoint => ({
-        id:      toQdrantId(p['_id'] ?? p['code']),
-        vector,
-        payload: {
-          mongo_id:     String(p['_id'] ?? p['code']),
-          code:         p['code'],
-          product_name: p['product_name'] ?? p['product_name_en'],
-          brands:       normalizeData((p['brands'] ?? p['brands_tags']) as string | string[] | undefined),
-          categories:   normalizeData((p['categories'] ?? p['categories_tags']) as string | string[] | undefined),
-          ingredients:  normalizeData((p['ingredients_text'] ?? p['ingredients_text_en'] ?? p['ingredients_tags']) as string | string[] | undefined),
-          labels:       normalizeData(p['labels_tags'] as string | string[] | undefined),
-          countries,
-          product_type: p['product_type'],
-          completeness: p['completeness'],
-        },
-      })),
-    );
+    candidates.push({ product: p, qdrantId: toQdrantId(p['_id'] ?? p['code']) });
+    processed++;
 
-    if (batch.length >= CONCURRENCY) {
-      const results = await Promise.all(batch);
-      batch.length = 0;
-      points.push(...results);
-      count += results.length;
-      if (count % BATCH_SIZE === 0) await flushBatch(points, count);
-    }
-
-    if (limit && count >= limit) break;
+    if (candidates.length >= BATCH_SIZE) await processCandidates();
+    if (limit && processed >= limit) break;
   }
 
-  if (batch.length > 0) {
-    const results = await Promise.all(batch);
-    points.push(...results);
-    count += results.length;
-  }
-  await flushBatch(points, count);
+  await processCandidates();
+  await flushBatch(points, synced);
 
   const countRes   = await qdrant.count(COLLECTION_NAME);
   const pointCount = typeof countRes === 'number' ? countRes : (countRes as { count?: number }).count ?? 0;
-  console.log(`  Qdrant now holds ${pointCount} vectors (synced ${count} this run).`);
+  console.log(`  Qdrant now holds ${pointCount} vectors (synced ${synced}, skipped ${skipped} this run).`);
 }
 
 if (require.main === module) {
