@@ -9,6 +9,7 @@
  *   Ubuntu: apt-get install mongodb-database-tools
  */
 import { loadDump } from '../src/infra/dataLoader';
+import { closeDb } from '../src/infra/mongo';
 
 const DUMP_URL = 'https://static.openbeautyfacts.org/data/openbeautyfacts-mongodbdump.gz';
 const SHA256SUM_URL = 'https://static.openbeautyfacts.org/data/gz-sha256sum';
@@ -19,10 +20,13 @@ export async function loadOBF() {
     dumpUrl: DUMP_URL,
     sha256Url: SHA256SUM_URL,
     localFile: LOCAL_FILE,
-    mongoNamespaceFrom: 'obf'
+    mongoNamespaceFrom: 'obf',
+    mongoCollection: 'products'
   });
 }
 
 if (require.main === module) {
-  loadOBF().catch(err => { console.error('[04-load-obf] Failed:', err); process.exit(1); });
+  loadOBF()
+    .then(() => closeDb())
+    .catch(err => { console.error('[04-load-obf] Failed:', err); process.exit(1); });
 }

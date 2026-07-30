@@ -13,12 +13,14 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
+import { getDb } from './mongo';
 
 export interface DumpLoaderOptions {
   dumpUrl: string;
   sha256Url: string;
   localFile: string;
   mongoNamespaceFrom: string;
+  mongoCollection: string;
   drop?: boolean;
 }
 
@@ -152,6 +154,17 @@ function downloadFile(url: string, dest: string, resumeOffset = getResumeOffset(
 }
 
 export async function loadDump(opts: DumpLoaderOptions): Promise<void> {
+  const forceReload = process.env.FORCE_RELOAD === 'true';
+
+  if (!forceReload) {
+    const mongoDb = await getDb();
+    const existingCount = await mongoDb.collection(opts.mongoCollection).estimatedDocumentCount();
+    if (existingCount > 0) {
+      console.log(`  Collection "${opts.mongoCollection}" already has ${existingCount} docs — skipping download and restore.`);
+      return;
+    }
+  }
+
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 
   const LOCAL_FILE = path.join(CACHE_DIR, opts.localFile);

@@ -14,15 +14,15 @@ const PRESETS = {
   /** Deterministic JSON extraction — clarify user concern and profile. */
   questioner: { model: MODEL, temperature: 0, max_tokens: 2048 },
   /** Slightly creative — personalised product explanations. */
-  recommender: { model: MODEL, temperature: 0.3, max_tokens: 2048 },
+  recommender: { model: MODEL, temperature: 0.3, max_tokens: 4096 },
   /** Short deterministic extraction — brand name from web content. */
-  webResearcher: { model: MODEL, temperature: 0, max_tokens: 100 },
+  webResearcher: { model: MODEL, temperature: 0, max_tokens: 600 },
   /** Short deterministic extraction — INCI ingredient list from query. */
   inci: { model: MODEL, temperature: 0, max_tokens: 800 },
   /** Deterministic — query-focused summary of retrieved PubMed abstracts. */
   evidenceSummary: { model: MODEL, temperature: 0, max_tokens: 800 },
   /** Deterministic — contextual review of safety-flagged products (Layer 2, see agents/safetyChecker.ts). */
-  safetyChecker: { model: MODEL, temperature: 0, max_tokens: 2048 },
+  safetyChecker: { model: MODEL, temperature: 0, max_tokens: 3072 },
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
