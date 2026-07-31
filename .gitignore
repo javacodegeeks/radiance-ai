@@ -54,3 +54,5 @@ openbeautyfacts-mongodbdump.gz.etag
 data/.cache/
 
 docker/docker-compose.yml
+
+docs/specs/

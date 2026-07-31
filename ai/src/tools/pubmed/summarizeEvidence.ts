@@ -39,7 +39,7 @@ export async function summarizeArticlesForQuery(
   ];
 
   try {
-    console.log('[pubmed] prompt=EVIDENCE_SUMMARY_SYSTEM');
+    // console.log('[pubmed] prompt=EVIDENCE_SUMMARY_SYSTEM');
     const raw = await chatCompletion('evidenceSummary', messages);
     const parsed = SummarySchema.parse(JSON.parse(stripJsonFences(raw)));
     return new Map(parsed.summaries.map(s => [s.pmid, s.summary]));

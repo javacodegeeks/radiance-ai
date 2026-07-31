@@ -31,6 +31,7 @@ export interface RecommendationResult {
   categories: string[];
   countryAvailability: string[];
   sourceUrl?: string;
+  imageUrl?: string;
   safetyStatus: 'safe' | 'caution' | 'unsafe';
   safetyNotes?: string;
   relevanceScore: number;
@@ -38,14 +39,21 @@ export interface RecommendationResult {
   relevanceToQuery?: string;
   reasoning?: string;
   usageTips?: string[];
+  confidence?: number;
 }
 
 export type ChatPhase = 'collecting' | 'questioning' | 'processing' | 'done' | 'error';
+
+export interface ExcludedProductResult {
+  name: string;
+  reason: string;
+}
 
 export interface ChatResponse {
   messages: ChatMessage[];
   phase: ChatPhase;
   recommendations?: RecommendationResult[];
+  excludedProducts?: ExcludedProductResult[];
   error?: string;
 }
 
@@ -74,11 +82,12 @@ function noProductsFound(): ChatResponse {
   };
 }
 
-function recommendationsResponse(recs: RecommendationResult[]): ChatResponse {
+function recommendationsResponse(recs: RecommendationResult[], excludedProducts: ExcludedProductResult[]): ChatResponse {
   return {
     messages: [msg('assistant', 'Here are your personalised recommendations based on your concern:')],
     phase: 'done',
     recommendations: recs,
+    ...(excludedProducts.length > 0 && { excludedProducts }),
   };
 }
 
@@ -165,8 +174,9 @@ export async function processMessage(sessionId: string, message: string): Promis
       return { messages: [await reply(sessionId, graphResult.pendingQuestions[0])], phase: 'questioning' };
     }
 
+    const excludedProducts = (graphResult.excludedRecommendations ?? []) as ExcludedProductResult[];
     await setSession(sessionId, { ...session, phase: 'done' });
-    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs);
+    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs, excludedProducts);
     await appendMessage(sessionId, 'assistant', response.messages[0].content);
     return response;
   }
@@ -218,8 +228,9 @@ export async function processMessage(sessionId: string, message: string): Promis
       return { messages: [await reply(sessionId, graphResult.pendingQuestions[0])], phase: 'questioning' };
     }
 
+    const excludedProducts = (graphResult.excludedRecommendations ?? []) as ExcludedProductResult[];
     await setSession(sessionId, { ...session, phase: 'done' });
-    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs);
+    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs, excludedProducts);
     await appendMessage(sessionId, 'assistant', response.messages[0].content);
     return response;
   }

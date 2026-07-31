@@ -23,6 +23,13 @@ function normalizeTags(value: unknown): string[] {
     .filter(Boolean);
 }
 
+/** OBF/OFF dumps use several image field names depending on data source and product age. */
+function toImageUrl(r: ProductDoc): string | undefined {
+  const candidates = [r['image_front_url'], r['image_url'], r['image_front_small_url'], r['image_small_url']];
+  const found = candidates.find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  return found;
+}
+
 function normalizeId(id: unknown): string {
   if (id instanceof ObjectId) return id.toHexString();
   return String(id);
@@ -45,6 +52,7 @@ function toProduct(r: ProductDoc): Product {
     countryAvailability: toArray(r['countries']),
     labels:              normalizeTags(r['labels_tags']),
     allergens:           normalizeTags(r['allergens_tags']),
+    imageUrl:            toImageUrl(r),
     cachedAt:            r['cached_at'] instanceof Date ? r['cached_at'] : undefined,
   };
 }

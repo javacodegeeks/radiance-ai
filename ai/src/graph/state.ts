@@ -1,5 +1,5 @@
 import { Annotation } from '@langchain/langgraph';
-import { AgentStep, Message, Product, QueryContext, RecommendedProduct, SafetyReport, UserProfile } from '../types';
+import { AgentStep, ExcludedRecommendation, Message, Product, QueryContext, RecommendedProduct, SafetyReport, UserProfile } from '../types';
 
 export const GraphState = Annotation.Root({
   sessionId: Annotation<string>({
@@ -52,6 +52,11 @@ export const GraphState = Annotation.Root({
     default: () => ({ approved: [], softWarnings: [], hardBlocks: [] }),
   }),
   finalRecommendations: Annotation<RecommendedProduct[]>({
+    reducer: (_, b) => b,
+    default: () => [],
+  }),
+  /** Products the Recommender's LLM call excluded as unsafe, with its stated reason — see agents/recommender.ts. */
+  excludedRecommendations: Annotation<ExcludedRecommendation[]>({
     reducer: (_, b) => b,
     default: () => [],
   }),

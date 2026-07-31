@@ -29,6 +29,7 @@ export async function run(options: RunOptions) {
     safetyCheckedProducts: [],
     safetyReport:          { approved: [], softWarnings: [], hardBlocks: [] },
     finalRecommendations:  [],
+    excludedRecommendations: [],
     currentStep:           'interview' as AgentStep,
     iterationCount:        0,
   };

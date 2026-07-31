@@ -3,7 +3,7 @@ import { chatCompletion, LlmMessage, stripJsonFences } from '../llm/client';
 import { RECOMMENDER_SYSTEM } from '../llm/prompts';
 import { LlmCallError, SchemaParseError } from '../common/errors';
 import { GraphStateType } from '../graph/state';
-import { RecommendedProduct } from '../types';
+import { ExcludedRecommendation, RecommendedProduct } from '../types';
 
 const MAX_RECOMMENDATIONS = 5;
 
@@ -15,6 +15,7 @@ const ProductExplanationSchema = z.object({
   reasoning:        z.string(),
   usageTips:        z.array(z.string()),
   safetyNotes:      z.string().optional(),
+  confidence:       z.number().min(0).max(100).optional(),
 });
 
 const RecommenderOutputSchema = z.object({
@@ -40,6 +41,14 @@ function rank(products: RecommendedProduct[]): RecommendedProduct[] {
     const scoreA = SAFETY_WEIGHT[a.safetyStatus] * 0.6 + a.relevanceScore * 0.4;
     const scoreB = SAFETY_WEIGHT[b.safetyStatus] * 0.6 + b.relevanceScore * 0.4;
     return scoreB - scoreA;
+  });
+}
+
+function reorderByConfidence(products: RecommendedProduct[]): RecommendedProduct[] {
+  return [...products].sort((a, b) => {
+    const safetyDiff = SAFETY_WEIGHT[b.safetyStatus] - SAFETY_WEIGHT[a.safetyStatus];
+    if (safetyDiff !== 0) return safetyDiff;
+    return (b.confidence ?? b.relevanceScore * 100) - (a.confidence ?? a.relevanceScore * 100);
   });
 }
 
@@ -77,15 +86,17 @@ export async function recommenderAgent(
   }));
 
   try {
-    const explained = await enrichWithLlm(withNotes, excluded, state);
-    console.log(`[recommender] generated ${explained.length} recommendation(s)`);
-    return { finalRecommendations: explained, currentStep: 'done' };
+    const { explained, excludedProducts } = await enrichWithLlm(withNotes, excluded, state);
+    const reordered = reorderByConfidence(explained);
+    console.log(`[recommender] generated ${reordered.length} recommendation(s), ${excludedProducts.length} excluded`);
+    return { finalRecommendations: reordered, excludedRecommendations: excludedProducts, currentStep: 'done' };
   } catch (err) {
     const label = err instanceof LlmCallError    ? 'LLM API call failed'
                 : err instanceof SchemaParseError ? 'Response schema invalid'
                 : 'Unexpected error';
     console.error(`[recommender] ${label} — using unenriched results`, err);
-    return { finalRecommendations: withNotes, currentStep: 'done' };
+    const fallbackExcluded = excluded.map(p => ({ name: p.name, reason: p.safetyNotes ?? 'unsafe' }));
+    return { finalRecommendations: withNotes, excludedRecommendations: fallbackExcluded, currentStep: 'done' };
   }
 }
 
@@ -95,7 +106,7 @@ async function enrichWithLlm(
   top: RecommendedProduct[],
   excluded: RecommendedProduct[],
   state: GraphStateType,
-): Promise<RecommendedProduct[]> {
+): Promise<{ explained: RecommendedProduct[]; excludedProducts: ExcludedRecommendation[] }> {
   const { userQuery, queryContext, userProfile } = state;
 
   const issue = queryContext.refinedIssue ?? userQuery;
@@ -118,7 +129,7 @@ async function enrichWithLlm(
     ? excluded.map(p => `"${p.name}" — ${p.safetyNotes ?? 'unsafe'}`).join('\n')
     : '(none)';
 
-  console.log('[recommender] prompt=RECOMMENDER_SYSTEM');
+  // console.log('[recommender] prompt=RECOMMENDER_SYSTEM');
   const userPrompt = `User's concern: "${issue}"
 Goals: ${goals}
 User profile: ${profileSummary}
@@ -145,7 +156,7 @@ Write personalised explanations for each recommended product.`;
 
   try {
     const output: RecommenderOutput = RecommenderOutputSchema.parse(JSON.parse(stripJsonFences(raw)));
-    return mergeExplanations(top, output);
+    return { explained: mergeExplanations(top, output), excludedProducts: output.excludedProducts ?? [] };
   } catch (err) {
     throw new SchemaParseError('recommender', 'LLM response failed schema validation', err);
   }
@@ -168,6 +179,7 @@ function mergeExplanations(
       reasoning:        exp.reasoning,
       usageTips:        exp.usageTips,
       ...(exp.safetyNotes !== undefined && { safetyNotes: exp.safetyNotes }),
+      ...(exp.confidence !== undefined && { confidence: exp.confidence }),
     };
   });
 }
