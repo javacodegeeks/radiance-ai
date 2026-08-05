@@ -58,6 +58,7 @@ describe('findSimilarProducts', () => {
         countries: 'US,FR',
         labels_tags: ['en:fragrance-free'],
         allergens_tags: ['en:tree-nuts'],
+        image_front_url: 'https://images.example/cleanser-front.jpg',
       },
       {
         _id: 'a',
@@ -83,6 +84,7 @@ describe('findSimilarProducts', () => {
         countryAvailability: [],
         labels: [],
         allergens: [],
+        imageUrl: undefined,
         cachedAt: undefined,
       },
       {
@@ -93,9 +95,21 @@ describe('findSimilarProducts', () => {
         countryAvailability: ['US', 'FR'],
         labels: ['fragrance free'],
         allergens: ['tree nuts'],
+        imageUrl: 'https://images.example/cleanser-front.jpg',
         cachedAt: undefined,
       },
     ]);
+  });
+
+  it('falls back through image_url / image_front_small_url / image_small_url when image_front_url is absent, and ignores non-string values', async () => {
+    (qdrant.search as jest.Mock).mockResolvedValue([{ payload: { mongo_id: 'a' } }]);
+    mockToArray.mockResolvedValue([
+      { _id: 'a', product_name: 'Toner', image_url: '  ', image_small_url: 'https://images.example/toner-small.jpg' },
+    ]);
+
+    const [result] = await findSimilarProducts([0.1, 0.2]);
+
+    expect(result.imageUrl).toBe('https://images.example/toner-small.jpg');
   });
 
   it('throws a RepositoryError when the Qdrant search fails', async () => {
