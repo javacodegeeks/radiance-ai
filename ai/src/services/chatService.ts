@@ -106,7 +106,11 @@ async function reply(sessionId: string, content: string): Promise<ChatMessage> {
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
-export async function processMessage(sessionId: string, message: string): Promise<ChatResponse> {
+export async function processMessage(
+  sessionId: string,
+  message: string,
+  onProgress?: (label: string) => void,
+): Promise<ChatResponse> {
   let session = await getSession(sessionId) ?? await createSession(sessionId);
   console.log(`[chatService] session=${sessionId} phase=${session.phase}`);
 
@@ -154,7 +158,7 @@ export async function processMessage(sessionId: string, message: string): Promis
 
     let graphResult;
     try {
-      graphResult = await run({ sessionId, userQuery, existingProfile });
+      graphResult = await run({ sessionId, userQuery, existingProfile, onProgress });
     } catch (err) {
       await setSession(sessionId, { ...session, phase: 'error' });
       return graphErrorResponse(sessionId, err);
@@ -208,7 +212,7 @@ export async function processMessage(sessionId: string, message: string): Promis
 
     let graphResult;
     try {
-      graphResult = await run({ sessionId, userQuery, existingProfile, conversationHistory: updatedHistory });
+      graphResult = await run({ sessionId, userQuery, existingProfile, conversationHistory: updatedHistory, onProgress });
     } catch (err) {
       await setSession(sessionId, { ...session, phase: 'error' });
       return graphErrorResponse(sessionId, err);
