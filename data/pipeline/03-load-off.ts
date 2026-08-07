@@ -9,6 +9,7 @@
  *   Ubuntu: apt-get install mongodb-database-tools
  */
 import { loadDump } from '../src/infra/dataLoader';
+import { closeDb } from '../src/infra/mongo';
 
 const DUMP_URL = 'https://static.openfoodfacts.org/data/openfoodfacts-mongodbdump.gz';
 const SHA256SUM_URL = 'https://static.openfoodfacts.org/data/gz-sha256sum';
@@ -20,10 +21,13 @@ export async function loadOFF() {
     sha256Url: SHA256SUM_URL,
     localFile: LOCAL_FILE,
     mongoNamespaceFrom: 'off',
+    mongoCollection: 'products',
     drop: true
   });
 }
 
 if (require.main === module) {
-  loadOFF().catch(err => { console.error('[03-load-off] Failed:', err); process.exit(1); });
+  loadOFF()
+    .then(() => closeDb())
+    .catch(err => { console.error('[03-load-off] Failed:', err); process.exit(1); });
 }

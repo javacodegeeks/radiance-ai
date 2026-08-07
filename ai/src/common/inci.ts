@@ -7,7 +7,7 @@ export async function findIngredients(content: string): Promise<string | null> {
   if (!normalizedContent) return null;
 
   try {
-    console.log('[inci] prompt=INCI_SYSTEM');
+    // console.log('[inci] prompt=INCI_SYSTEM');
     const rawText = (await chatCompletion('inci', [
       { role: 'system', content: INCI_SYSTEM },
       { role: 'user',   content: `Return a comma-separated INCI-formatted list of the most suitable pharmaceutical and parapharmaceutical ingredients for treating the following condition: ${normalizedContent}\n\nRespond with ONLY the comma-separated list or "Unknown". No other text.` },

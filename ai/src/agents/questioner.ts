@@ -126,7 +126,7 @@ async function runLlmQuestioner(
     console.warn('[questioner] failed to load known contraindication tags — proceeding without tag hints', err);
   }
 
-  console.log('[questioner] prompt=QUESTIONER_SYSTEM');
+  // console.log('[questioner] prompt=QUESTIONER_SYSTEM');
   const userPrompt = `User's Query: "${userQuery}"
 
 Existing Profile: ${profileSummary}
@@ -309,7 +309,15 @@ function buildStateUpdate(
   const effectiveAllergies  = p.allergies  ?? state.userProfile.allergies;
   const criticalFieldsPresent = !!effectiveCountry && effectiveAllergies != null;
 
-  const profileComplete = output.profileComplete && criticalFieldsPresent;
+  // Safety net: weaker models sometimes leave profileComplete=false even once
+  // country/allergies are confirmed (e.g. misreading an empty allergies array
+  // as "unconfirmed" rather than "confirmed none") — with no further questions
+  // to ask (output.questions.length === 0) this loops the supervisor back to
+  // interview forever with an identical prompt/response until MAX_ITERATIONS
+  // aborts the graph. If critical fields are already present and the model has
+  // nothing left to ask this turn, treat the profile as complete regardless of
+  // the model's self-reported flag.
+  const profileComplete = criticalFieldsPresent && (output.profileComplete || output.questions.length === 0);
 
   // Safety net: if profile is complete and we already have conversation history
   // (at least 2 Q&A turns = 4 messages), treat the query as ready regardless of

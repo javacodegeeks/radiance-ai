@@ -37,6 +37,7 @@ export interface Product {
   /** Structured allergen tags (e.g. EU fragrance allergens like 'linalool', 'limonene') — more reliable than free-text INCI parsing */
   allergens?: string[];
   sourceUrl?: string;
+  imageUrl?: string;
   embedding?: number[];
   cachedAt?: Date;
 }
@@ -99,6 +100,14 @@ export interface RecommendedProduct extends Product {
   reasoning?: string;
   /** How to use the product for best results */
   usageTips?: string[];
+  /** LLM self-reported 0-100 confidence that this specific product fits this specific user's concern/profile — distinct from relevanceScore, which is a safety-tier ranking proxy, not a user-facing confidence signal */
+  confidence?: number;
+}
+
+/** A product the Recommender's LLM call excluded, with the safety-signal-grounded reason it gave. */
+export interface ExcludedRecommendation {
+  name: string;
+  reason: string;
 }
 
 export interface Message {
