@@ -5,8 +5,17 @@ import { Product } from '../types';
 import { chatCompletion, stripJsonFences } from '../llm/client';
 import { WEB_RESEARCHER_PRODUCT_SYSTEM } from '../llm/prompts';
 import { LlmCallError } from '../common/errors';
+import { CircuitBreaker, withTimeout } from '../common/resilience';
 
 const MAX_RESULTS = 10;
+const TAVILY_TIMEOUT_MS = 8_000;
+
+// Trip after 3 consecutive Tavily failures/timeouts, stay open for 60s so a
+// degraded/down search provider doesn't stall every chat request behind it.
+const tavilyBreaker = new CircuitBreaker('webResearcher.tavily', {
+  failureThreshold: 3,
+  cooldownMs: 60_000,
+});
 
 const PRODUCT_QUERY_HINTS = `
 "official product page"
@@ -73,11 +82,18 @@ export async function webResearcherAgent(
 
   const query = await buildQuery(queryContext.refinedIssue ?? userQuery, country);
 
+  if (tavilyBreaker.isOpen()) {
+    console.warn('[webResearcher] Circuit open — skipping Tavily search, returning empty results');
+    return { webResults: [] };
+  }
+
   try {
-    const rawResults = await runTavilySearch(query);
+    const rawResults = await withTimeout(runTavilySearch(query), TAVILY_TIMEOUT_MS, 'Tavily search');
     const products   = await parseResults(rawResults, country);
+    tavilyBreaker.recordSuccess();
     return { webResults: products };
   } catch (err) {
+    tavilyBreaker.recordFailure();
     console.error('[webResearcher] Search failed — returning empty results:', err);
     return { webResults: [] };
   }
