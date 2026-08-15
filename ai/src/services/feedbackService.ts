@@ -18,6 +18,6 @@ export async function recordFeedback(input: RecordFeedbackInput): Promise<void> 
     productName: input.productName,
     brand:       input.brand,
     rating:      input.rating,
-    updatedAt:   new Date(),
+    at:          new Date(),
   });
 }
