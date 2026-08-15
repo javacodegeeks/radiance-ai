@@ -5,6 +5,7 @@
 import { graph } from './workflow';
 import { GraphStateType } from './state';
 import { AgentStep } from '../types';
+import { auditSafetyReport } from '../services/safetyAuditService';
 
 export interface RunOptions {
   sessionId: string;
@@ -70,5 +71,18 @@ export async function run(options: RunOptions): Promise<GraphStateType> {
   }
 
   console.log(`[graph] done session=${options.sessionId} step=${finalState.currentStep} recs=${finalState.finalRecommendations?.length ?? 0}`);
+
+  // Best-effort: a failure here must never take down the chat response —
+  // the caller already has everything it needs from finalState regardless.
+  try {
+    await auditSafetyReport({
+      sessionId: options.sessionId,
+      safetyReport: finalState.safetyReport,
+      excludedRecommendations: finalState.excludedRecommendations,
+    });
+  } catch (err) {
+    console.warn(`[graph] failed to persist safety audit for session=${options.sessionId} — continuing`, err);
+  }
+
   return finalState;
 }
