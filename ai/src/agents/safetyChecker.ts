@@ -127,6 +127,14 @@ function applyLayer2Verdicts(
   for (const item of flagged) {
     const assessment = assessments.get(item.product.name);
 
+    // TODO(audit): assessment.reasoning (the Layer 2 LLM's own words) is
+    // concatenated into `notes` below and loses its identity as a distinct,
+    // LLM-generated fact — merged with the deterministic Layer 1 signal
+    // before it ever reaches GraphStateType/safety_audit_log. To make Layer 2
+    // reasoning independently auditable ("the LLM said X, here's why"),
+    // carry it as its own field (e.g. RecommendedProduct.llmSafetyReasoning)
+    // instead of folding it into `notes`, and thread it through
+    // safetyAuditRepository.SafetyAuditEntry.
     if (assessment?.verdict === 'approved') {
       const notes = item.notes ? `${assessment.reasoning} ${item.notes}` : assessment.reasoning;
       approved.push(toRecommendedProduct(item.product, 'safe', notes, 0.9));
