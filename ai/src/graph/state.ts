@@ -1,5 +1,5 @@
 import { Annotation } from '@langchain/langgraph';
-import { AgentStep, ExcludedRecommendation, Message, Product, QueryContext, RecommendedProduct, SafetyReport, UserProfile } from '../types';
+import { AgentStep, ExcludedRecommendation, Message, Product, QueryContext, RecommendedProduct, Routine, SafetyReport, UserProfile } from '../types';
 
 export const GraphState = Annotation.Root({
   sessionId: Annotation<string>({
@@ -59,6 +59,11 @@ export const GraphState = Annotation.Root({
   excludedRecommendations: Annotation<ExcludedRecommendation[]>({
     reducer: (_, b) => b,
     default: () => [],
+  }),
+  /** AM/PM sequencing of finalRecommendations + interaction guidance — see agents/recommender.ts. */
+  routine: Annotation<Routine>({
+    reducer: (_, b) => b,
+    default: () => ({ am: [], pm: [], interactionWarnings: [] }),
   }),
   currentStep: Annotation<AgentStep>({
     reducer: (_, b) => b,

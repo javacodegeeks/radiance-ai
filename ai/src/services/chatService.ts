@@ -15,6 +15,7 @@ import {
   appendMessage,
   QuestioningState,
 } from './sessionStore';
+import { Routine } from '../types';
 
 // ─── Response types (consumed by the controller) ──────────────────────────────
 
@@ -54,6 +55,8 @@ export interface ChatResponse {
   phase: ChatPhase;
   recommendations?: RecommendationResult[];
   excludedProducts?: ExcludedProductResult[];
+  /** AM/PM sequencing + interaction guidance for `recommendations` — see agents/recommender.ts. */
+  routine?: Routine;
   error?: string;
 }
 
@@ -82,12 +85,21 @@ function noProductsFound(): ChatResponse {
   };
 }
 
-function recommendationsResponse(recs: RecommendationResult[], excludedProducts: ExcludedProductResult[]): ChatResponse {
+function hasRoutineContent(routine?: Routine): boolean {
+  return Boolean(routine && (routine.am.length > 0 || routine.pm.length > 0 || routine.interactionWarnings.length > 0));
+}
+
+function recommendationsResponse(
+  recs: RecommendationResult[],
+  excludedProducts: ExcludedProductResult[],
+  routine?: Routine,
+): ChatResponse {
   return {
     messages: [msg('assistant', 'Here are your personalised recommendations based on your concern:')],
     phase: 'done',
     recommendations: recs,
     ...(excludedProducts.length > 0 && { excludedProducts }),
+    ...(hasRoutineContent(routine) && { routine }),
   };
 }
 
@@ -180,7 +192,7 @@ export async function processMessage(
 
     const excludedProducts = (graphResult.excludedRecommendations ?? []) as ExcludedProductResult[];
     await setSession(sessionId, { ...session, phase: 'done' });
-    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs, excludedProducts);
+    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs, excludedProducts, graphResult.routine);
     await appendMessage(sessionId, 'assistant', response.messages[0].content);
     return response;
   }
@@ -234,7 +246,7 @@ export async function processMessage(
 
     const excludedProducts = (graphResult.excludedRecommendations ?? []) as ExcludedProductResult[];
     await setSession(sessionId, { ...session, phase: 'done' });
-    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs, excludedProducts);
+    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs, excludedProducts, graphResult.routine);
     await appendMessage(sessionId, 'assistant', response.messages[0].content);
     return response;
   }

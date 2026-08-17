@@ -3,9 +3,20 @@ import { chatCompletion, LlmMessage, stripJsonFences } from '../llm/client';
 import { RECOMMENDER_SYSTEM } from '../llm/prompts';
 import { LlmCallError, SchemaParseError } from '../common/errors';
 import { GraphStateType } from '../graph/state';
-import { ExcludedRecommendation, RecommendedProduct } from '../types';
+import { ExcludedRecommendation, ProductCategory, RecommendedProduct, Routine } from '../types';
 
 const MAX_RECOMMENDATIONS = 5;
+
+/**
+ * Category-aware selection tries to guarantee routine coverage (a routine
+ * with five serums and no cleanser is useless) — see
+ * docs/specs/routine-generation-feature.md blocker #3. Only meaningful once
+ * products carry a precomputed `category` (data/pipeline/08-classify-categories.ts);
+ * products with no category just fall back to plain score order.
+ */
+const REQUIRED_CATEGORIES: ProductCategory[] = ['cleanser', 'moisturizer'];
+
+const EMPTY_ROUTINE: Routine = { am: [], pm: [], interactionWarnings: [] };
 
 // ─── Structured output schema ─────────────────────────────────────────────────
 
@@ -18,12 +29,19 @@ const ProductExplanationSchema = z.object({
   confidence:       z.number().min(0).max(100).optional(),
 });
 
+const RoutineSchema = z.object({
+  am:                  z.array(z.string()),
+  pm:                  z.array(z.string()),
+  interactionWarnings: z.array(z.string()),
+});
+
 const RecommenderOutputSchema = z.object({
   recommendations: z.array(ProductExplanationSchema),
   excludedProducts: z.array(z.object({
     name:   z.string(),
     reason: z.string(),
   })).optional(),
+  routine: RoutineSchema.optional(),
 });
 
 type RecommenderOutput = z.infer<typeof RecommenderOutputSchema>;
@@ -42,6 +60,34 @@ function rank(products: RecommendedProduct[]): RecommendedProduct[] {
     const scoreB = SAFETY_WEIGHT[b.safetyStatus] * 0.6 + b.relevanceScore * 0.4;
     return scoreB - scoreA;
   });
+}
+
+/**
+ * Picks the best-ranked product per required category first (if one exists
+ * among the candidates), then fills remaining slots by score. `ranked` must
+ * already be sorted best-first (i.e. the output of rank()).
+ */
+function selectCategoryAware(ranked: RecommendedProduct[], max: number): RecommendedProduct[] {
+  const picked: RecommendedProduct[] = [];
+  const pickedNames = new Set<string>();
+
+  for (const category of REQUIRED_CATEGORIES) {
+    const best = ranked.find(p => p.category === category && !pickedNames.has(p.name));
+    if (best) {
+      picked.push(best);
+      pickedNames.add(best.name);
+    }
+  }
+
+  for (const p of ranked) {
+    if (picked.length >= max) break;
+    if (!pickedNames.has(p.name)) {
+      picked.push(p);
+      pickedNames.add(p.name);
+    }
+  }
+
+  return picked.slice(0, max);
 }
 
 function reorderByConfidence(products: RecommendedProduct[]): RecommendedProduct[] {
@@ -75,7 +121,7 @@ export async function recommenderAgent(
 
   const ranked   = rank(safetyCheckedProducts);
   const safe     = ranked.filter(p => p.safetyStatus !== 'unsafe');
-  const top      = safe.slice(0, MAX_RECOMMENDATIONS);
+  const top      = selectCategoryAware(safe, MAX_RECOMMENDATIONS);
   const excluded = ranked.filter(p => p.safetyStatus === 'unsafe');
 
   console.log(`[recommender] ranked=${ranked.length} safe=${safe.length} top=${top.length} excluded=${excluded.length}`);
@@ -86,17 +132,17 @@ export async function recommenderAgent(
   }));
 
   try {
-    const { explained, excludedProducts } = await enrichWithLlm(withNotes, excluded, state);
+    const { explained, excludedProducts, routine } = await enrichWithLlm(withNotes, excluded, state);
     const reordered = reorderByConfidence(explained);
     console.log(`[recommender] generated ${reordered.length} recommendation(s), ${excludedProducts.length} excluded`);
-    return { finalRecommendations: reordered, excludedRecommendations: excludedProducts, currentStep: 'done' };
+    return { finalRecommendations: reordered, excludedRecommendations: excludedProducts, routine, currentStep: 'done' };
   } catch (err) {
     const label = err instanceof LlmCallError    ? 'LLM API call failed'
                 : err instanceof SchemaParseError ? 'Response schema invalid'
                 : 'Unexpected error';
     console.error(`[recommender] ${label} — using unenriched results`, err);
     const fallbackExcluded = excluded.map(p => ({ name: p.name, reason: p.safetyNotes ?? 'unsafe' }));
-    return { finalRecommendations: withNotes, excludedRecommendations: fallbackExcluded, currentStep: 'done' };
+    return { finalRecommendations: withNotes, excludedRecommendations: fallbackExcluded, routine: EMPTY_ROUTINE, currentStep: 'done' };
   }
 }
 
@@ -106,7 +152,7 @@ async function enrichWithLlm(
   top: RecommendedProduct[],
   excluded: RecommendedProduct[],
   state: GraphStateType,
-): Promise<{ explained: RecommendedProduct[]; excludedProducts: ExcludedRecommendation[] }> {
+): Promise<{ explained: RecommendedProduct[]; excludedProducts: ExcludedRecommendation[]; routine: Routine }> {
   const { userQuery, queryContext, userProfile } = state;
 
   const issue = queryContext.refinedIssue ?? userQuery;
@@ -120,7 +166,7 @@ async function enrichWithLlm(
   });
 
   const productList = top.map((p, i) =>
-    `${i + 1}. "${p.name}" by ${p.brand} — safety: ${p.safetyStatus}` +
+    `${i + 1}. "${p.name}" by ${p.brand} — category: ${p.category ?? 'unclassified'} — safety: ${p.safetyStatus}` +
     (p.safetyNotes ? ` (${p.safetyNotes})` : '') +
     `. Ingredients: ${p.inci.slice(0, 10).join(', ') || 'unknown'}.`,
   ).join('\n');
@@ -156,7 +202,11 @@ Write personalised explanations for each recommended product.`;
 
   try {
     const output: RecommenderOutput = RecommenderOutputSchema.parse(JSON.parse(stripJsonFences(raw)));
-    return { explained: mergeExplanations(top, output), excludedProducts: output.excludedProducts ?? [] };
+    return {
+      explained: mergeExplanations(top, output),
+      excludedProducts: output.excludedProducts ?? [],
+      routine: output.routine ?? EMPTY_ROUTINE,
+    };
   } catch (err) {
     throw new SchemaParseError('recommender', 'LLM response failed schema validation', err);
   }

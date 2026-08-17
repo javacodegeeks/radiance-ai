@@ -23,32 +23,36 @@ import { loadOBF } from './04-load-obf';
 import { vectorizeProducts } from './05-vectorize';
 import { loadCosingRestrictions } from './06-load-cosing-restrictions';
 import { loadCosingProhibited } from './07-load-cosing-prohibited';
+import { classifyCategories } from './08-classify-categories';
 
 async function main(): Promise<void> {
   console.log('╔══════════════════════════════════════╗');
   console.log('║   Radiance AI — Data Pipeline        ║');
   console.log('╚══════════════════════════════════════╝\n');
 
-  console.log('Step 1/7 — PostgreSQL migrations');
+  console.log('Step 1/8 — PostgreSQL migrations');
   await migrateDb();
 
-  console.log('\nStep 2/7 — Safety rules seed');
+  console.log('\nStep 2/8 — Safety rules seed');
   await seedSafetyRules();
 
-  console.log('\nStep 3/7 — Load EU CosIng Annex III/IV/V restrictions');
+  console.log('\nStep 3/8 — Load EU CosIng Annex III/IV/V restrictions');
   await loadCosingRestrictions();
 
-  console.log('\nStep 4/7 — Load EU CosIng Annex II prohibited substances');
+  console.log('\nStep 4/8 — Load EU CosIng Annex II prohibited substances');
   await loadCosingProhibited();
 
-  // console.log('\nStep 5/7 — Load OFF product catalogue into MongoDB');
+  // console.log('\nStep 5/8 — Load OFF product catalogue into MongoDB');
   // await loadOFF();
 
-  console.log('\nStep 6/7 — Load OBF product catalogue into MongoDB');
+  console.log('\nStep 6/8 — Load OBF product catalogue into MongoDB');
   await loadOBF();
 
-  console.log('\nStep 7/7 — Vectorize products → Qdrant');
+  console.log('\nStep 7/8 — Vectorize products → Qdrant');
   await vectorizeProducts();
+
+  console.log('\nStep 8/8 — Classify products into routine-sequencing categories');
+  await classifyCategories();
 
   console.log('\n✓ Pipeline complete.\n');
   await closePg();
