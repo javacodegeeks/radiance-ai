@@ -12,7 +12,7 @@
     "pipeline:safety": "ts-node -r dotenv/config pipeline/02-seed-safety.ts",
     "pipeline:load": "ts-node -r dotenv/config pipeline/03-load-off.ts && ts-node -r dotenv/config pipeline/04-load-obf.ts",
     "pipeline:vectorize": "ts-node -r dotenv/config pipeline/05-vectorize.ts",
-    "pipeline:cosing": "ts-node -r dotenv/config pipeline/06-load-cosing-restrictions.ts && ts-node -r dotenv/config pipeline/07-load-cosing-prohibited.ts",
+    "pipeline:cosing": "ts-node -r dotenv/config pipeline/06-load-cosing-restrictions.ts && ts-node -r dotenv/config pipeline/07-load-cosing-prohibited.ts && ts-node -r dotenv/config pipeline/09-load-cosing-functions.ts",
     "pipeline:categorize": "ts-node -r dotenv/config pipeline/08-classify-categories.ts"
   },
   "dependencies": {

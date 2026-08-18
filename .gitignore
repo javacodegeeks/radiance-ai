@@ -58,5 +58,10 @@ docker/docker-compose.yml
 docs/specs/
 docs/positioning/
 
+# Dual Graph
 .dual-graph/
 
+# Pipeline
+data/pipeline/fetch-cosing-search-api.sh
+data/pipeline/functions.json
+data/pipeline/ingredients-by-function/
