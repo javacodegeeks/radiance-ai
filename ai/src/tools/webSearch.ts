@@ -1,6 +1,6 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { TavilySearchResults } from '@langchain/community/tools/tavily_search';
+import { TavilySearch } from '@langchain/tavily';
 
 // LangChain's tool() overload resolution against this schema shape triggers
 // TS2589 ("Type instantiation is excessively deep and possibly infinite") —
@@ -16,11 +16,11 @@ type WebSearchInput = z.infer<typeof webSearchToolSchema>;
 export const webSearchTool = tool(
   async (rawInput) => {
     const { query, country } = rawInput as WebSearchInput;
-    const tavilyTool = new TavilySearchResults({ maxResults: 10 });
+    const tavilyTool = new TavilySearch({ maxResults: 10 });
     const countryQuery = country
       ? `${query} available in ${country}`
       : query;
-    return tavilyTool.invoke(countryQuery);
+    return tavilyTool.invoke({ query: countryQuery });
   },
   {
     name: 'web_search_products',
