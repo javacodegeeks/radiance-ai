@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radiance AI</title>
+<meta name="description" content="An agentic recommendation system for cosmetic and skincare products, with ingredient safety checking built in.">
+<meta name="theme-color" content="#f2efe6">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✨</text></svg>">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Radiance AI">
+<meta property="og:description" content="An agentic recommendation system for cosmetic and skincare products, with ingredient safety checking built in.">
+<meta property="og:url" content="https://javacodegeeks.github.io/radiance-ai/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Radiance AI">
+<meta name="twitter:description" content="An agentic recommendation system for cosmetic and skincare products, with ingredient safety checking built in.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --surface: #e7e2d3;
+    --paper: #f2efe6;
+    --ink: #14171a;
+    --ink-soft: #52534c;
+    --line: #d8d2be;
+    --amber: #c8712b;
+    --amber-text: #93501c;
+    --display: "Barlow Condensed", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--surface); }
+  body {
+    margin: 0;
+    padding: clamp(1.5rem, 5vw, 4rem) 1rem;
+    font-family: var(--body);
+    background: var(--surface);
+    color: var(--ink);
+    line-height: 1.6;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+  a { color: var(--amber-text); }
+  a:focus-visible,
+  .cta:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  .label {
+    max-width: 720px;
+    margin: 0 auto;
+    background: var(--paper);
+    border: 2px solid var(--ink);
+    border-radius: 4px;
+    box-shadow: 6px 6px 0 var(--ink);
+    padding: clamp(1.75rem, 5vw, 3rem) clamp(1.5rem, 6vw, 3.5rem);
+  }
+  @media (max-width: 480px) {
+    .label { box-shadow: 3px 3px 0 var(--ink); }
+  }
+
+  .eyebrow {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 0.78rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--amber-text);
+    margin: 0 0 0.4rem;
+  }
+
+  header { margin-bottom: 2.5rem; }
+  h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+    font-size: clamp(2.4rem, 9vw, 3.6rem);
+    margin: 0 0 0.75rem;
+  }
+  .tagline {
+    color: var(--ink-soft);
+    font-size: 1.05rem;
+    margin: 0 0 1.5rem;
+    max-width: 560px;
+  }
+
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+  }
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.1rem;
+    font-family: var(--display);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    text-decoration: none;
+    border: 2px solid var(--ink);
+    border-radius: 3px;
+    box-shadow: 3px 3px 0 var(--ink);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+  .cta:hover { transform: translate(1px, 1px); box-shadow: 2px 2px 0 var(--ink); }
+  .cta.primary { background: var(--amber); color: var(--ink); }
+  .cta.secondary { background: var(--paper); color: var(--ink); }
+
+  hr.rule {
+    border: none;
+    border-top: 1.5px dashed var(--line);
+    margin: 2rem 0;
+  }
+
+  section { margin-bottom: 2rem; }
+  h2 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 1.35rem;
+    margin: 0 0 0.65rem;
+    color: var(--ink);
+  }
+  section p { color: var(--ink-soft); margin: 0 0 0.75rem; }
+  section p:last-child { margin-bottom: 0; }
+
+  .pipeline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+    margin: 1rem 0;
+    font-family: var(--mono);
+  }
+  .pipeline .step {
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  .pipeline .arrow { color: var(--ink-soft); font-size: 0.85rem; }
+
+  .link-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .link-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 1.5px solid var(--line);
+    border-radius: 3px;
+    padding: 0.75rem 1rem;
+    text-decoration: none;
+    color: var(--ink);
+    font-weight: 500;
+    transition: border-color 0.12s ease, background 0.12s ease;
+  }
+  .link-row:hover { border-color: var(--ink); background: var(--surface); }
+  .link-row .arrow-icon { color: var(--ink-soft); transition: transform 0.12s ease; }
+  .link-row:hover .arrow-icon { transform: translateX(3px); }
+
+  footer {
+    border-top: 2px solid var(--ink);
+    padding-top: 1.25rem;
+    margin-top: 2rem;
+  }
+  .ingredients {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.7;
+    color: var(--ink-soft);
+    letter-spacing: 0.01em;
+  }
+  .ingredients strong {
+    font-family: var(--display);
+    font-weight: 700;
+    color: var(--ink);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .fine-print {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    margin-top: 1rem;
+  }
+  .fine-print a { color: var(--ink-soft); text-decoration: underline; }
+</style>
+</head>
+<body>
+  <div class="label">
+    <header>
+      <p class="eyebrow">Agentic skincare safety engine</p>
+      <h1>Radiance AI</h1>
+      <p class="tagline">An agentic recommendation system for cosmetic and skincare products that reads every ingredient list before it recommends anything — flagging allergens, unsafe actives, and health-condition conflicts first.</p>
+      <div class="cta-row">
+        <a class="cta primary" href="https://github.com/javacodegeeks/radiance-ai">View on GitHub</a>
+        <a class="cta secondary" href="https://github.com/javacodegeeks/radiance-ai/blob/main/README.md">Read the README</a>
+      </div>
+    </header>
+
+    <hr class="rule">
+
+    <main>
+      <section>
+        <p class="eyebrow">Directions for use</p>
+        <h2>What it does</h2>
+        <p>A multi-agent workflow drives the core reasoning loop: it interviews the user to build a safety profile, searches a product catalog, runs ingredient safety checks, and generates personalised recommendations — all over a stateless REST API backed by persistent session storage.</p>
+      </section>
+
+      <section>
+        <p class="eyebrow">Active mechanism</p>
+        <h2>How it works</h2>
+        <p>An agentic <a href="https://www.langchain.com/langgraph" target="_blank" rel="noopener">LangGraph</a> workflow orchestrates five stages, in order:</p>
+        <div class="pipeline">
+          <span class="step">Supervisor</span>
+          <span class="arrow">&gt;</span>
+          <span class="step">Questioner</span>
+          <span class="arrow">&gt;</span>
+          <span class="step">ProductFinder / WebResearcher</span>
+          <span class="arrow">&gt;</span>
+          <span class="step">SafetyChecker</span>
+          <span class="arrow">&gt;</span>
+          <span class="step">Recommender</span>
+        </div>
+        <p>Backed by Qdrant (vector search), MongoDB (product catalog), and PostgreSQL (sessions, safety rules, EU CosIng ingredient data), with all LLM and embedding calls routed through a LiteLLM proxy so the underlying model provider is swappable.</p>
+      </section>
+
+      <section>
+        <p class="eyebrow">See also</p>
+        <h2>Learn more</h2>
+        <div class="link-list">
+          <a class="link-row" href="https://github.com/javacodegeeks/radiance-ai/blob/main/docs/architecture-overview.md">
+            <span>Architecture overview</span>
+            <span class="arrow-icon">&gt;</span>
+          </a>
+          <a class="link-row" href="https://github.com/javacodegeeks/radiance-ai/blob/main/README.md">
+            <span>README &amp; setup guide</span>
+            <span class="arrow-icon">&gt;</span>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p class="ingredients"><strong>Ingredients:</strong> LangGraph, Qdrant, MongoDB, PostgreSQL, LiteLLM, Express, TypeScript, Node.js.</p>
+      <p class="fine-print">Open source — see <a href="https://github.com/javacodegeeks/radiance-ai/blob/main/README.md">repository</a> for license and contribution details.</p>
+    </footer>
+  </div>
+</body>
+</html>
