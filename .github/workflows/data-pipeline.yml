@@ -1,0 +1,69 @@
+name: Data Pipeline
+
+# Manual only — these scripts run migrations/loads/vectorization against the
+# SaaS Postgres/Mongo/Qdrant instances. No on-push or schedule trigger: running
+# any of this against prod data should be a deliberate, reviewable action.
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: Pipeline step to run
+        required: true
+        type: choice
+        default: migrate
+        options:
+          - migrate
+          - safety
+          - load
+          - vectorize
+          - cosing
+          - categorize
+          - all
+
+# Prevent two pipeline runs from hitting the same database concurrently.
+concurrency:
+  group: data-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run-pipeline:
+    name: Run pipeline (${{ inputs.step }})
+    runs-on: ubuntu-latest
+    # Requires a "production" environment configured in repo Settings → Environments,
+    # holding the secrets below. Add required reviewers there to gate prod runs.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: data
+
+      - name: Run pipeline step
+        working-directory: data
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          MONGO_HOST: ${{ secrets.MONGO_HOST }}
+          MONGO_PORT: ${{ secrets.MONGO_PORT }}
+          MONGO_USER: ${{ secrets.MONGO_USER }}
+          MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
+          MONGO_DB_NAME: ${{ secrets.MONGO_DB_NAME }}
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          EMBEDDING_MODEL: ${{ secrets.EMBEDDING_MODEL }}
+        run: |
+          if [ "${{ inputs.step }}" = "all" ]; then
+            npm run pipeline
+          else
+            npm run pipeline:${{ inputs.step }}
+          fi
