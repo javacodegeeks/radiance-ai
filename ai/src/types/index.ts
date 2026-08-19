@@ -129,12 +129,48 @@ export interface RecommendedProduct extends Product {
   usageTips?: string[];
   /** LLM self-reported 0-100 confidence that this specific product fits this specific user's concern/profile — distinct from relevanceScore, which is a safety-tier ranking proxy, not a user-facing confidence signal */
   confidence?: number;
+  /** Elevated, non-blocking side-effect risk flagged by the Recommender's LLM — see ComplementaryRecommendation for the product resolved to counteract it. */
+  sideEffectRisk?: string;
 }
 
 /** A product the Recommender's LLM call excluded, with the safety-signal-grounded reason it gave. */
 export interface ExcludedRecommendation {
   name: string;
   reason: string;
+}
+
+/**
+ * LLM-identified elevated (but non-blocking) side-effect risk for a
+ * recommended product, grounded against a specific EU CosIng ingredient
+ * function rather than a free-text guess — see agents/recommender.ts
+ * resolveComplementaryProducts. Never causes the product itself to be
+ * dropped or reordered; it only drives the search for a complementary
+ * product below.
+ */
+export interface SideEffectRisk {
+  /** Must match a RecommendedProduct.name within the same recommendation set */
+  productName: string;
+  /** Plain-language description of the risk, e.g. "may cause dryness/irritation with regular use" */
+  risk: string;
+  /** EU CosIng function (exact match to the closed glossary — see repositories/cosingFunctionsRepository.ts) whose effect would counteract this risk */
+  counteractingFunction: string;
+}
+
+/**
+ * A real, catalog-grounded product algorithmically resolved to counteract a
+ * specific SideEffectRisk (never hallucinated by the LLM), plus its
+ * LLM-written fit explanation — see agents/recommender.ts.
+ */
+export interface ComplementaryRecommendation {
+  /** Name of the originally recommended product this complements */
+  forProduct: string;
+  /** The side-effect risk being addressed */
+  risk: string;
+  /** The CosIng function this complementary product was matched on */
+  matchedFunction: string;
+  product: RecommendedProduct;
+  /** Why this specific product was chosen to counteract the risk (LLM-written) */
+  explanation: string;
 }
 
 export interface Message {

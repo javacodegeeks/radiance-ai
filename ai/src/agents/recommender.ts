@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { chatCompletion, LlmMessage, stripJsonFences } from '../llm/client';
-import { RECOMMENDER_SYSTEM } from '../llm/prompts';
+import { RECOMMENDER_SYSTEM, RECOMMENDER_COMPLEMENTARY_SYSTEM } from '../llm/prompts';
 import { LlmCallError, SchemaParseError } from '../common/errors';
 import { GraphStateType } from '../graph/state';
-import { ExcludedRecommendation, ProductCategory, RecommendedProduct, Routine } from '../types';
+import { COSING_FUNCTION_NAMES, findIngredientsByFunction } from '../repositories/cosingFunctionsRepository';
+import { ComplementaryRecommendation, ExcludedRecommendation, ProductCategory, RecommendedProduct, Routine, SideEffectRisk } from '../types';
 
 const MAX_RECOMMENDATIONS = 5;
 
@@ -35,6 +36,21 @@ const RoutineSchema = z.object({
   interactionWarnings: z.array(z.string()),
 });
 
+// counteractingFunction is deliberately z.string(), not z.enum(COSING_FUNCTION_NAMES):
+// sideEffectRisks is a best-effort, non-blocking side feature riding inside the
+// same parse() as recommendations/routine/excludedProducts — an enum here would
+// make one bad function name (case drift, a near-duplicate like "SKIN
+// CONDITIONING - MISCELLANEOUS") throw and lose the whole recommendation.
+// Closed-list membership is checked per-risk in resolveComplementaryProducts
+// instead, so an unrecognized value just skips that one risk.
+const SideEffectRiskSchema = z.object({
+  productName:           z.string(),
+  risk:                  z.string(),
+  counteractingFunction: z.string(),
+});
+
+const COSING_FUNCTION_SET = new Set<string>(COSING_FUNCTION_NAMES);
+
 const RecommenderOutputSchema = z.object({
   recommendations: z.array(ProductExplanationSchema),
   excludedProducts: z.array(z.object({
@@ -42,9 +58,18 @@ const RecommenderOutputSchema = z.object({
     reason: z.string(),
   })).optional(),
   routine: RoutineSchema.optional(),
+  sideEffectRisks: z.array(SideEffectRiskSchema).optional(),
 });
 
 type RecommenderOutput = z.infer<typeof RecommenderOutputSchema>;
+
+const ComplementaryOutputSchema = z.object({
+  explanations: z.array(z.object({
+    productName: z.string(),
+    explanation: z.string(),
+  })),
+  routine: RoutineSchema,
+});
 
 // ─── Scoring ──────────────────────────────────────────────────────────────────
 
@@ -132,17 +157,29 @@ export async function recommenderAgent(
   }));
 
   try {
-    const { explained, excludedProducts, routine } = await enrichWithLlm(withNotes, excluded, state);
+    const { explained, excludedProducts, routine, complementary } = await enrichWithLlm(withNotes, excluded, state);
     const reordered = reorderByConfidence(explained);
-    console.log(`[recommender] generated ${reordered.length} recommendation(s), ${excludedProducts.length} excluded`);
-    return { finalRecommendations: reordered, excludedRecommendations: excludedProducts, routine, currentStep: 'done' };
+    console.log(`[recommender] generated ${reordered.length} recommendation(s), ${excludedProducts.length} excluded, ${complementary.length} complementary`);
+    return {
+      finalRecommendations: reordered,
+      excludedRecommendations: excludedProducts,
+      routine,
+      complementaryRecommendations: complementary,
+      currentStep: 'done',
+    };
   } catch (err) {
     const label = err instanceof LlmCallError    ? 'LLM API call failed'
                 : err instanceof SchemaParseError ? 'Response schema invalid'
                 : 'Unexpected error';
     console.error(`[recommender] ${label} — using unenriched results`, err);
     const fallbackExcluded = excluded.map(p => ({ name: p.name, reason: p.safetyNotes ?? 'unsafe' }));
-    return { finalRecommendations: withNotes, excludedRecommendations: fallbackExcluded, routine: EMPTY_ROUTINE, currentStep: 'done' };
+    return {
+      finalRecommendations: withNotes,
+      excludedRecommendations: fallbackExcluded,
+      routine: EMPTY_ROUTINE,
+      complementaryRecommendations: [],
+      currentStep: 'done',
+    };
   }
 }
 
@@ -152,8 +189,13 @@ async function enrichWithLlm(
   top: RecommendedProduct[],
   excluded: RecommendedProduct[],
   state: GraphStateType,
-): Promise<{ explained: RecommendedProduct[]; excludedProducts: ExcludedRecommendation[]; routine: Routine }> {
-  const { userQuery, queryContext, userProfile } = state;
+): Promise<{
+  explained: RecommendedProduct[];
+  excludedProducts: ExcludedRecommendation[];
+  routine: Routine;
+  complementary: ComplementaryRecommendation[];
+}> {
+  const { userQuery, queryContext, userProfile, safetyCheckedProducts } = state;
 
   const issue = queryContext.refinedIssue ?? userQuery;
   const goals = (queryContext.goals ?? []).join(', ') || 'not specified';
@@ -200,16 +242,176 @@ Write personalised explanations for each recommended product.`;
     throw new LlmCallError('recommender', 'LLM API call failed', err);
   }
 
+  let output: RecommenderOutput;
   try {
-    const output: RecommenderOutput = RecommenderOutputSchema.parse(JSON.parse(stripJsonFences(raw)));
-    return {
-      explained: mergeExplanations(top, output),
-      excludedProducts: output.excludedProducts ?? [],
-      routine: output.routine ?? EMPTY_ROUTINE,
-    };
+    output = RecommenderOutputSchema.parse(JSON.parse(stripJsonFences(raw)));
   } catch (err) {
     throw new SchemaParseError('recommender', 'LLM response failed schema validation', err);
   }
+
+  const explained = mergeExplanations(top, output);
+  const baseRoutine = output.routine ?? EMPTY_ROUTINE;
+
+  const { explained: withRisks, complementary, routine } = await applySideEffectRisks(
+    explained,
+    output.sideEffectRisks ?? [],
+    safetyCheckedProducts,
+    baseRoutine,
+  );
+
+  return {
+    explained: withRisks,
+    excludedProducts: output.excludedProducts ?? [],
+    routine,
+    complementary,
+  };
+}
+
+// ─── Side-effect risk / complementary product resolution ──────────────────────
+
+/**
+ * Non-blocking: the flagged product itself is never dropped or reordered
+ * because of a side-effect risk. For each LLM-flagged risk, tries to resolve
+ * a real, already safety-checked product from the candidate pool that
+ * carries the CosIng function needed to counteract it, then asks the LLM
+ * (one batched call) to explain the fit and rebuild the routine around it.
+ * Any lookup/LLM failure along the way just leaves the risk noted with no
+ * complementary product — never blocks the primary recommendation flow.
+ */
+async function applySideEffectRisks(
+  explained: RecommendedProduct[],
+  risks: SideEffectRisk[],
+  pool: RecommendedProduct[],
+  baseRoutine: Routine,
+): Promise<{ explained: RecommendedProduct[]; complementary: ComplementaryRecommendation[]; routine: Routine }> {
+  if (!risks.length) {
+    return { explained, complementary: [], routine: baseRoutine };
+  }
+
+  const recommendedNames = new Set(explained.map(p => p.name));
+
+  // Note the risk on its product regardless of whether a complementary
+  // product can be resolved for it — informational either way.
+  const withRiskNotes = explained.map(p => {
+    const risk = risks.find(r => r.productName === p.name);
+    return risk ? { ...p, sideEffectRisk: risk.risk } : p;
+  });
+
+  const resolved = await resolveComplementaryProducts(risks, recommendedNames, pool);
+  if (!resolved.length) {
+    return { explained: withRiskNotes, complementary: [], routine: baseRoutine };
+  }
+
+  try {
+    const { complementary, routine } = await buildComplementaryRoutine(resolved, baseRoutine);
+    return { explained: withRiskNotes, complementary, routine };
+  } catch (err) {
+    console.warn('[recommender] complementary routine LLM call failed — showing side-effect risk without a complementary product', err);
+    return { explained: withRiskNotes, complementary: [], routine: baseRoutine };
+  }
+}
+
+/**
+ * Grounds each flagged risk in real catalog data: looks up which real
+ * ingredients carry the counteracting CosIng function, then finds a product
+ * already in the safety-checked pool (never a fresh, unchecked product, and
+ * never one already recommended) whose ingredient list contains one of
+ * them. Skips a risk if the LLM named a product not actually in this
+ * recommendation set (hallucination guard), or if no real candidate is
+ * found — never invents a product.
+ */
+async function resolveComplementaryProducts(
+  risks: SideEffectRisk[],
+  recommendedNames: Set<string>,
+  pool: RecommendedProduct[],
+): Promise<Array<{ risk: SideEffectRisk; candidate: RecommendedProduct }>> {
+  const resolved: Array<{ risk: SideEffectRisk; candidate: RecommendedProduct }> = [];
+  const usedCandidates = new Set<string>();
+
+  for (const risk of risks) {
+    if (!recommendedNames.has(risk.productName)) continue;
+
+    if (!COSING_FUNCTION_SET.has(risk.counteractingFunction)) {
+      console.warn(`[recommender] LLM returned an unrecognized counteractingFunction "${risk.counteractingFunction}" — skipping this risk`);
+      continue;
+    }
+
+    let counteractingIngredients: string[];
+    try {
+      counteractingIngredients = await findIngredientsByFunction([risk.counteractingFunction]);
+    } catch (err) {
+      console.warn(`[recommender] CosIng function lookup failed for "${risk.counteractingFunction}" — skipping this risk`, err);
+      continue;
+    }
+    if (!counteractingIngredients.length) continue;
+
+    const normalizedTargets = new Set(counteractingIngredients.map(i => i.toLowerCase()));
+    const candidate = pool.find(p =>
+      p.safetyStatus !== 'unsafe' &&
+      !recommendedNames.has(p.name) &&
+      !usedCandidates.has(p.name) &&
+      p.inci.some(ing => normalizedTargets.has(ing.toLowerCase())),
+    );
+    if (candidate) {
+      resolved.push({ risk, candidate });
+      usedCandidates.add(candidate.name);
+    }
+  }
+
+  return resolved;
+}
+
+/**
+ * Single batched LLM call (not one per candidate) — asks the model to
+ * explain each algorithmically-resolved complementary product's fit and
+ * rebuild the FULL routine around it, mirroring the Layer 2 batching
+ * pattern in agents/safetyChecker.ts.
+ */
+async function buildComplementaryRoutine(
+  resolved: Array<{ risk: SideEffectRisk; candidate: RecommendedProduct }>,
+  currentRoutine: Routine,
+): Promise<{ complementary: ComplementaryRecommendation[]; routine: Routine }> {
+  const candidateList = resolved.map((r, i) =>
+    `${i + 1}. For "${r.risk.productName}" (risk: ${r.risk.risk}) — complementary candidate: "${r.candidate.name}" by ${r.candidate.brand}, category: ${r.candidate.category ?? 'unclassified'}, matched function: ${r.risk.counteractingFunction}. Ingredients: ${r.candidate.inci.slice(0, 10).join(', ') || 'unknown'}.`,
+  ).join('\n');
+
+  const userPrompt = `Current routine:
+${JSON.stringify(currentRoutine)}
+
+Complementary product candidates to incorporate:
+${candidateList}
+
+For each candidate, write a fit explanation, then return one fully rebuilt routine incorporating both the existing products and every complementary candidate.`;
+
+  const messages: LlmMessage[] = [
+    { role: 'system', content: RECOMMENDER_COMPLEMENTARY_SYSTEM },
+    { role: 'user',   content: userPrompt },
+  ];
+
+  let raw: string;
+  try {
+    raw = await chatCompletion('recommenderComplementary', messages);
+  } catch (err) {
+    throw new LlmCallError('recommender', 'Complementary LLM API call failed', err);
+  }
+
+  let output: z.infer<typeof ComplementaryOutputSchema>;
+  try {
+    output = ComplementaryOutputSchema.parse(JSON.parse(stripJsonFences(raw)));
+  } catch (err) {
+    throw new SchemaParseError('recommender', 'Complementary LLM response failed schema validation', err);
+  }
+
+  const explanationByName = new Map(output.explanations.map(e => [e.productName, e.explanation]));
+  const complementary: ComplementaryRecommendation[] = resolved.map(r => ({
+    forProduct:      r.risk.productName,
+    risk:            r.risk.risk,
+    matchedFunction: r.risk.counteractingFunction,
+    product:         r.candidate,
+    explanation:     explanationByName.get(r.candidate.name) ?? `Helps offset: ${r.risk.risk}`,
+  }));
+
+  return { complementary, routine: output.routine };
 }
 
 // ─── Merge helper ─────────────────────────────────────────────────────────────

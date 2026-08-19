@@ -10,6 +10,13 @@
  * Idempotent: only queries products missing a `category` field, so it's safe
  * to re-run after new products are loaded (e.g. after pipeline:load).
  *
+ * Distinct from the EU CosIng ingredient-function glossary (~83 tags like
+ * MOISTURISING, EXFOLIATING — see ai/src/repositories/cosingFunctionsRepository.ts).
+ * That's a finer-grained, ingredient-level axis used only to find a real
+ * complementary product for a flagged side-effect risk; it doesn't compute
+ * or replace this coarse, product-level routine category, so it doesn't make
+ * this script redundant.
+ *
  * Usage:
  *   npm run pipeline:categorize          # classify all unclassified products
  *   npm run pipeline:categorize -- 500   # classify first 500 (for testing)

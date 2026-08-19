@@ -23,6 +23,8 @@ const PRESETS = {
   evidenceSummary: { model: MODEL, temperature: 0, max_tokens: 800 },
   /** Deterministic — contextual review of safety-flagged products (Layer 2, see agents/safetyChecker.ts). */
   safetyChecker: { model: MODEL, temperature: 0, max_tokens: 3072 },
+  /** Slightly creative — explains an algorithmically-resolved complementary product and rebuilds the routine (see agents/recommender.ts). */
+  recommenderComplementary: { model: MODEL, temperature: 0.3, max_tokens: 2048 },
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
