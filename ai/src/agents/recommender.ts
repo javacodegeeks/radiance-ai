@@ -141,6 +141,65 @@ function buildAvailabilityNote(product: RecommendedProduct, country?: string): s
   return 'Availability unconfirmed — check local retailers.';
 }
 
+// ─── Interaction conflict detection ────────────────────────────────────────────
+
+/**
+ * Curated known ingredient-pair conflicts. Unlike COSING_FUNCTION_NAMES
+ * (DB-backed, runtime-validated), this list used to live only as free text
+ * inside the LLM prompt (KNOWN_INTERACTION_CONFLICTS in llm/prompts.ts) with
+ * no code-level grounding — the LLM could invent or miss a pair with nothing
+ * to catch it. Kept here as structured data instead, and matched against each
+ * recommended product's actual INCI list by detectInteractionConflicts below,
+ * so interactionWarnings can never contain a hallucinated conflict or miss a
+ * real one the LLM failed to notice.
+ */
+interface InteractionRule {
+  /** Lowercase substrings matched against an ingredient name — covers common synonyms/forms. */
+  ingredientsA: string[];
+  ingredientsB: string[];
+  guidance: string;
+}
+
+const INTERACTION_RULES: InteractionRule[] = [
+  {
+    ingredientsA: ['retinol', 'retinal', 'retinyl', 'retinoid', 'tretinoin'],
+    ingredientsB: ['glycolic acid', 'lactic acid', 'mandelic acid', 'salicylic acid', 'aha', 'bha'],
+    guidance: "Retinol/retinoid + AHA/BHA exfoliant → don't use on the same night (irritation risk)",
+  },
+  {
+    ingredientsA: ['ascorbic acid', 'vitamin c', 'l-ascorbic acid'],
+    ingredientsB: ['retinol', 'retinal', 'retinyl', 'retinoid', 'tretinoin'],
+    guidance: 'Vitamin C (ascorbic acid) → AM only, not paired with retinol in the same routine slot',
+  },
+  {
+    ingredientsA: ['benzoyl peroxide'],
+    ingredientsB: ['retinol', 'retinal', 'retinyl', 'retinoid', 'tretinoin'],
+    guidance: 'Benzoyl peroxide + retinoid → can deactivate the retinoid; use at different times of day',
+  },
+];
+
+function matchesAnyIngredient(inci: string[], keywords: string[]): boolean {
+  const lower = inci.map(i => i.toLowerCase());
+  return keywords.some(kw => lower.some(ing => ing.includes(kw)));
+}
+
+/**
+ * Deterministically detects known conflicts across a set of recommended
+ * products' real INCI lists — replaces the LLM-generated interactionWarnings
+ * entirely (see llm/prompts.ts). A rule fires only when both sides of the
+ * pair are actually present among the products' ingredients, never on a
+ * guess.
+ */
+export function detectInteractionConflicts(products: RecommendedProduct[]): string[] {
+  const warnings: string[] = [];
+  for (const rule of INTERACTION_RULES) {
+    const hasA = products.some(p => matchesAnyIngredient(p.inci, rule.ingredientsA));
+    const hasB = products.some(p => matchesAnyIngredient(p.inci, rule.ingredientsB));
+    if (hasA && hasB) warnings.push(rule.guidance);
+  }
+  return warnings;
+}
+
 // ─── Agent ────────────────────────────────────────────────────────────────────
 
 /**
@@ -261,7 +320,10 @@ Write personalised explanations for each recommended product.`;
   }
 
   const explained = mergeExplanations(top, output);
-  const baseRoutine = output.routine ?? EMPTY_ROUTINE;
+  const baseRoutine: Routine = {
+    ...(output.routine ?? EMPTY_ROUTINE),
+    interactionWarnings: detectInteractionConflicts(top),
+  };
 
   const { explained: withRisks, complementary, routine } = await applySideEffectRisks(
     explained,
@@ -317,7 +379,12 @@ async function applySideEffectRisks(
 
   try {
     const { complementary, routine } = await buildComplementaryRoutine(resolved, baseRoutine);
-    return { explained: withRiskNotes, complementary, routine };
+    const fullProductSet = [...withRiskNotes, ...resolved.map(r => r.candidate)];
+    return {
+      explained: withRiskNotes,
+      complementary,
+      routine: { ...routine, interactionWarnings: detectInteractionConflicts(fullProductSet) },
+    };
   } catch (err) {
     console.warn('[recommender] complementary routine LLM call failed — showing side-effect risk without a complementary product', err);
     return { explained: withRiskNotes, complementary: [], routine: baseRoutine };

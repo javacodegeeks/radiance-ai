@@ -25,7 +25,7 @@ import { findIngredientsByFunction } from '../../src/repositories/cosingFunction
 import { generateEmbedding } from '../../src/llm/embeddings';
 import { findSimilarProducts } from '../../src/repositories/productRepository';
 import { checkProductSafety } from '../../src/agents/safetyChecker';
-import { recommenderAgent } from '../../src/agents/recommender';
+import { recommenderAgent, detectInteractionConflicts } from '../../src/agents/recommender';
 import { GraphStateType } from '../../src/graph/state';
 import { RecommendedProduct, Routine } from '../../src/types';
 
@@ -87,6 +87,31 @@ function successResponse(
     sideEffectRisks: opts.sideEffectRisks,
   });
 }
+
+describe('detectInteractionConflicts', () => {
+  it('flags a retinol + AHA/BHA pair present across two different products', () => {
+    const products = [
+      makeProduct({ name: 'Retinol Serum', inci: ['Retinol', 'Water'] }),
+      makeProduct({ name: 'Glycolic Toner', inci: ['Glycolic Acid', 'Water'] }),
+    ];
+    expect(detectInteractionConflicts(products)).toEqual([
+      "Retinol/retinoid + AHA/BHA exfoliant → don't use on the same night (irritation risk)",
+    ]);
+  });
+
+  it('returns no warnings when only one side of a known pair is present', () => {
+    const products = [makeProduct({ name: 'Retinol Serum', inci: ['Retinol', 'Water'] })];
+    expect(detectInteractionConflicts(products)).toEqual([]);
+  });
+
+  it('returns no warnings when ingredients contain none of the known conflict pairs', () => {
+    const products = [
+      makeProduct({ name: 'Cleanser F', inci: ['Water', 'Glycerin'] }),
+      makeProduct({ name: 'Moisturizer G', inci: ['Ceramide NP', 'Water'] }),
+    ];
+    expect(detectInteractionConflicts(products)).toEqual([]);
+  });
+});
 
 describe('recommenderAgent', () => {
   beforeEach(() => {
@@ -155,6 +180,50 @@ describe('recommenderAgent', () => {
 
     expect(result.routine).toEqual(routine);
     expect(result.currentStep).toBe('done');
+  });
+
+  it('overrides a hallucinated LLM interactionWarnings entry when no real ingredient conflict exists', async () => {
+    const products = [
+      makeProduct({ name: 'Cleanser F', category: 'cleanser', inci: ['Water'] }),
+      makeProduct({ name: 'Moisturizer G', category: 'moisturizer', inci: ['Glycerin'] }),
+    ];
+    (chatCompletion as jest.Mock).mockImplementation(async () =>
+      successResponse(['Cleanser F', 'Moisturizer G'], {
+        routine: {
+          am: ['Cleanse with Cleanser F', 'Apply Moisturizer G'],
+          pm: ['Cleanse with Cleanser F', 'Apply Moisturizer G'],
+          interactionWarnings: ['Cleanser F conflicts with Moisturizer G'],
+        },
+      }),
+    );
+
+    const result = await recommenderAgent(makeState(products));
+
+    expect(result.routine?.interactionWarnings).toEqual([]);
+  });
+
+  it('adds a deterministic interaction warning even when the LLM returned none', async () => {
+    const products = [
+      makeProduct({ name: 'Retinol Serum', category: 'treatment', inci: ['Retinol', 'Water'] }),
+      makeProduct({ name: 'Glycolic Toner', category: 'treatment', inci: ['Glycolic Acid', 'Water'] }),
+      makeProduct({ name: 'Cleanser F', category: 'cleanser' }),
+      makeProduct({ name: 'Moisturizer G', category: 'moisturizer' }),
+    ];
+    (chatCompletion as jest.Mock).mockImplementation(async () =>
+      successResponse(['Retinol Serum', 'Glycolic Toner', 'Cleanser F', 'Moisturizer G'], {
+        routine: {
+          am: ['Cleanse with Cleanser F', 'Apply Moisturizer G'],
+          pm: ['Cleanse with Cleanser F', 'Apply Retinol Serum', 'Apply Glycolic Toner', 'Apply Moisturizer G'],
+          interactionWarnings: [],
+        },
+      }),
+    );
+
+    const result = await recommenderAgent(makeState(products));
+
+    expect(result.routine?.interactionWarnings).toEqual([
+      "Retinol/retinoid + AHA/BHA exfoliant → don't use on the same night (irritation risk)",
+    ]);
   });
 
   it('merges excludedProducts from the LLM response into excludedRecommendations', async () => {

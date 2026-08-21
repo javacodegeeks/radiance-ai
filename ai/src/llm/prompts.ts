@@ -15,10 +15,15 @@ import { COSING_FUNCTION_NAMES } from '../repositories/cosingFunctionsRepository
  */
 const COSING_FUNCTION_LIST = COSING_FUNCTION_NAMES.join(', ');
 
-/** Shared by RECOMMENDER_SYSTEM and RECOMMENDER_COMPLEMENTARY_SYSTEM — kept in one place so the two prompts can't drift out of sync. */
-const KNOWN_INTERACTION_CONFLICTS = `  - Retinol/retinoid + AHA/BHA exfoliant → don't use on the same night (irritation risk)
-  - Vitamin C (ascorbic acid) → AM only, not paired with retinol in the same routine slot
-  - Benzoyl peroxide + retinoid → can deactivate the retinoid; use at different times of day`;
+/**
+ * Interaction conflicts (e.g. retinol + AHA/BHA) are no longer LLM-generated —
+ * unlike COSING_FUNCTION_NAMES above, free-text conflict guidance had no
+ * runtime validation, so a hallucinated pair could reach the user unchecked.
+ * agents/recommender.ts now detects them deterministically from each
+ * product's actual INCI list (see detectInteractionConflicts +
+ * INTERACTION_RULES there) and overwrites interactionWarnings after the LLM
+ * call — both prompts below just tell the model to leave the field empty.
+ */
 
 // ─── Questioner ───────────────────────────────────────────────────────────────
 
@@ -134,10 +139,7 @@ Routine rules (each product below lists its category — cleanser, treatment, mo
 - SPF products must never appear in the pm array — they belong only in am, as the final step
 - A product with category "unclassified" may still be placed using its name/ingredients as a hint, but if you can't confidently place it, leave it out of am/pm rather than guessing — do not fabricate a routine slot the data doesn't support
 - If none of the recommended products have a clear routine role (e.g. only unclassified/ambiguous products), return am: [] and pm: [] rather than forcing a sequence
-- interactionWarnings is guidance text, not a safety verdict — it must never contradict or duplicate safetyNotes/safetyStatus already given for a product
-- Apply this curated set of known conflicts when the recommended products include both sides of a pair (do not invent conflicts beyond this list):
-${KNOWN_INTERACTION_CONFLICTS}
-- If no known conflict pair is present among the recommended products, interactionWarnings must be an empty array
+- interactionWarnings is computed deterministically by the system from each product's actual ingredient list after this call — always return an empty array [] for this field
 
 Side-effect risk rules:
 - sideEffectRisks is for elevated, non-blocking risk only — it never means the product is unsafe (it already passed safety checks) and must never duplicate or contradict safetyNotes/safetyStatus
@@ -179,9 +181,7 @@ Rules:
 - Rebuild the FULL routine (not just the addition) — incorporate both the existing routine's products and every complementary candidate, using the same sequencing rules: cleanser first, then treatment, then moisturizer, then spf (AM only); SPF must never appear in pm
 - Place each complementary product in whichever of am/pm best fits the risk it addresses — default to the same slot as the product whose risk it counteracts (e.g. a moisturizing complement typically follows the drying treatment it offsets, in the same slot), unless the complementary product's own ingredients clearly call for different timing (e.g. a photosensitizing ingredient belongs in pm regardless of which slot the product it counteracts is in)
 - A complementary candidate's listed category may be "unclassified" — unlike the primary recommendation prompt's routine rules, this is never a reason to leave it out of am/pm; use the risk-based placement rule above instead, and never omit a complementary candidate from the routine entirely, since it was specifically resolved to address a flagged risk
-- interactionWarnings must reflect only genuine known conflicts from this curated list — do not invent new conflicts:
-${KNOWN_INTERACTION_CONFLICTS}
-- If no known conflict pair is present, interactionWarnings must be an empty array`;
+- interactionWarnings is computed deterministically by the system from each product's actual ingredient list after this call — always return an empty array [] for this field`;
 
 // ─── Safety Checker (Layer 2) ──────────────────────────────────────────────────
 
