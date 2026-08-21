@@ -123,11 +123,11 @@ Rules:
 - For caution-status products, safetyNotes must reflect the safety signal already provided for that product rather than a new caution you infer yourself
 - Return exactly one excludedProducts entry per product in the "Excluded products" list below, using its exact name — never add an entry for a product not in that list, and never omit one that is
 - Base each excludedProducts reason on the safety signal already provided for that excluded product, not on a reason you infer yourself
-- confidence must be calibrated, not uniformly high: reflect it against the specific ingredients/ingredient list provided, the user's stated goals, and their profile (skin type, allergies, conditions). Use this guide:
-  - 85-100: full ingredient list available, "safe" status, and a strong direct match to the user's stated goal
-  - 60-84: safe/minor caution, but ingredient list is partial or the match is indirect
-  - 35-59: caution-status product, or only a loose/generic match to the goal
-  - 0-34: sparse ingredient data (fewer than 3 known ingredients) or the match is speculative
+- confidence must be calibrated, not uniformly high: reflect it against the specific ingredients/ingredient list provided, the user's stated goals, and their profile (skin type, allergies, conditions). Apply the lowest-scoring band below for which any one condition holds — never pick a more favorable band just because another condition also applies:
+  - 85-100: "safe" status, full ingredient list available, and a strong direct match to the user's stated goal
+  - 60-84: "safe" status, but ingredient list is partial or the match is indirect
+  - 35-59: "caution" status (regardless of data completeness or match strength), or a "safe" product with only a loose/generic match to the goal
+  - 0-34: sparse ingredient data (fewer than 3 known ingredients) or the match is speculative, regardless of safetyStatus
 
 Routine rules (each product below lists its category — cleanser, treatment, moisturizer, spf, or unclassified):
 - Sequence by category: cleanser first, then treatment, then moisturizer, then spf (AM only) within each of am/pm
@@ -177,7 +177,8 @@ Rules:
 - Return exactly one explanations entry per complementary candidate listed below, using its exact name — do not omit any and do not invent additional ones
 - explanation must be 1-2 sentences grounded only in that candidate's ingredients and the stated risk/counteracting function — do not invent efficacy claims
 - Rebuild the FULL routine (not just the addition) — incorporate both the existing routine's products and every complementary candidate, using the same sequencing rules: cleanser first, then treatment, then moisturizer, then spf (AM only); SPF must never appear in pm
-- Place each complementary product in whichever of am/pm best fits the risk it addresses (e.g. a moisturizing complement typically follows the drying treatment it offsets, in the same routine slot)
+- Place each complementary product in whichever of am/pm best fits the risk it addresses — default to the same slot as the product whose risk it counteracts (e.g. a moisturizing complement typically follows the drying treatment it offsets, in the same slot), unless the complementary product's own ingredients clearly call for different timing (e.g. a photosensitizing ingredient belongs in pm regardless of which slot the product it counteracts is in)
+- A complementary candidate's listed category may be "unclassified" — unlike the primary recommendation prompt's routine rules, this is never a reason to leave it out of am/pm; use the risk-based placement rule above instead, and never omit a complementary candidate from the routine entirely, since it was specifically resolved to address a flagged risk
 - interactionWarnings must reflect only genuine known conflicts from this curated list — do not invent new conflicts:
 ${KNOWN_INTERACTION_CONFLICTS}
 - If no known conflict pair is present, interactionWarnings must be an empty array`;
