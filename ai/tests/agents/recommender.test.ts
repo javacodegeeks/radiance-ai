@@ -8,8 +8,23 @@ jest.mock('../../src/repositories/cosingFunctionsRepository', () => ({
   COSING_FUNCTION_NAMES: ['MOISTURISING', 'SOOTHING'],
 }));
 
+jest.mock('../../src/llm/embeddings', () => ({
+  generateEmbedding: jest.fn(),
+}));
+
+jest.mock('../../src/repositories/productRepository', () => ({
+  findSimilarProducts: jest.fn(),
+}));
+
+jest.mock('../../src/agents/safetyChecker', () => ({
+  checkProductSafety: jest.fn(),
+}));
+
 import { chatCompletion } from '../../src/llm/client';
 import { findIngredientsByFunction } from '../../src/repositories/cosingFunctionsRepository';
+import { generateEmbedding } from '../../src/llm/embeddings';
+import { findSimilarProducts } from '../../src/repositories/productRepository';
+import { checkProductSafety } from '../../src/agents/safetyChecker';
 import { recommenderAgent } from '../../src/agents/recommender';
 import { GraphStateType } from '../../src/graph/state';
 import { RecommendedProduct, Routine } from '../../src/types';
@@ -295,5 +310,84 @@ describe('recommenderAgent', () => {
     const retinol = (result.finalRecommendations ?? []).find(p => p.name === 'Retinol Serum');
     expect(retinol?.sideEffectRisk).toBe('May cause dryness or irritation');
     expect(retinol?.reasoning).toBe('Reasoning for Retinol Serum');
+  });
+
+  it('falls back to a fresh catalog search when the already-vetted pool has no candidate for the risk', async () => {
+    // Neither product in the pool carries the counteracting ingredient — the
+    // real-world case Byron flagged: a hair-loss product's dizziness risk has
+    // no reason to be countered by anything the original hair-loss search
+    // turned up, so resolveComplementaryProducts must search elsewhere.
+    const products = [
+      makeProduct({ name: 'Minoxidil Treatment', category: 'treatment', inci: ['Minoxidil', 'Water'] }),
+      makeProduct({ name: 'Cleanser F', category: 'cleanser' }),
+    ];
+
+    (findIngredientsByFunction as jest.Mock).mockResolvedValue(['Ginger Root Extract']);
+    (generateEmbedding as jest.Mock).mockResolvedValue([0.1, 0.2]);
+    (findSimilarProducts as jest.Mock).mockResolvedValue([
+      { name: 'Anti-Nausea Wristband Gel', brand: 'ReliefCo', inci: ['Ginger Root Extract'], categories: [], countryAvailability: ['US'] },
+    ]);
+    (checkProductSafety as jest.Mock).mockResolvedValue(
+      makeProduct({ name: 'Anti-Nausea Wristband Gel', brand: 'ReliefCo', inci: ['Ginger Root Extract'], safetyStatus: 'safe' }),
+    );
+
+    const rebuiltRoutine: Routine = {
+      am: ['Cleanse with Cleanser F'],
+      pm: ['Cleanse with Cleanser F', 'Apply Minoxidil Treatment', 'Apply Anti-Nausea Wristband Gel'],
+      interactionWarnings: [],
+    };
+
+    (chatCompletion as jest.Mock).mockImplementation(async (preset: string) => {
+      if (preset === 'recommenderComplementary') {
+        return JSON.stringify({
+          explanations: [{ productName: 'Anti-Nausea Wristband Gel', explanation: 'Counters nausea unrelated to the hair-loss concern.' }],
+          routine: rebuiltRoutine,
+        });
+      }
+      return successResponse(['Minoxidil Treatment', 'Cleanser F'], {
+        sideEffectRisks: [{ productName: 'Minoxidil Treatment', risk: 'May cause dizziness or nausea in some users', counteractingFunction: 'SOOTHING' }],
+      });
+    });
+
+    const result = await recommenderAgent(makeState(products));
+
+    expect(findSimilarProducts).toHaveBeenCalledTimes(1);
+    expect(checkProductSafety).toHaveBeenCalledTimes(1);
+    expect(result.complementaryRecommendations).toHaveLength(1);
+    expect(result.complementaryRecommendations?.[0].product.name).toBe('Anti-Nausea Wristband Gel');
+    expect(result.routine).toEqual(rebuiltRoutine);
+  });
+
+  it('leaves the risk without a complementary product when the second-pass search finds nothing safe', async () => {
+    const products = [
+      makeProduct({ name: 'Minoxidil Treatment', category: 'treatment', inci: ['Minoxidil', 'Water'] }),
+      makeProduct({ name: 'Cleanser F', category: 'cleanser' }),
+    ];
+
+    const originalRoutine: Routine = {
+      am: ['Cleanse with Cleanser F'],
+      pm: ['Cleanse with Cleanser F', 'Apply Minoxidil Treatment'],
+      interactionWarnings: [],
+    };
+
+    (findIngredientsByFunction as jest.Mock).mockResolvedValue(['Ginger Root Extract']);
+    (generateEmbedding as jest.Mock).mockResolvedValue([0.1, 0.2]);
+    (findSimilarProducts as jest.Mock).mockResolvedValue([
+      { name: 'Unrelated Product', brand: 'Other', inci: ['Water'], categories: [], countryAvailability: ['US'] },
+    ]);
+
+    (chatCompletion as jest.Mock).mockImplementation(async () =>
+      successResponse(['Minoxidil Treatment', 'Cleanser F'], {
+        routine: originalRoutine,
+        sideEffectRisks: [{ productName: 'Minoxidil Treatment', risk: 'May cause dizziness or nausea in some users', counteractingFunction: 'SOOTHING' }],
+      }),
+    );
+
+    const result = await recommenderAgent(makeState(products));
+
+    expect(checkProductSafety).not.toHaveBeenCalled();
+    expect(result.complementaryRecommendations).toEqual([]);
+    expect(result.routine).toEqual(originalRoutine);
+    expect(chatCompletion).toHaveBeenCalledTimes(1);
   });
 });

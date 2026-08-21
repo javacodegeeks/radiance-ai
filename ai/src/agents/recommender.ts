@@ -4,9 +4,20 @@ import { RECOMMENDER_SYSTEM, RECOMMENDER_COMPLEMENTARY_SYSTEM } from '../llm/pro
 import { LlmCallError, SchemaParseError } from '../common/errors';
 import { GraphStateType } from '../graph/state';
 import { COSING_FUNCTION_NAMES, findIngredientsByFunction } from '../repositories/cosingFunctionsRepository';
-import { ComplementaryRecommendation, ExcludedRecommendation, ProductCategory, RecommendedProduct, Routine, SideEffectRisk } from '../types';
+import { generateEmbedding } from '../llm/embeddings';
+import { findSimilarProducts } from '../repositories/productRepository';
+import { checkProductSafety } from './safetyChecker';
+import { ComplementaryRecommendation, ExcludedRecommendation, ProductCategory, RecommendedProduct, Routine, SideEffectRisk, UserProfile } from '../types';
 
 const MAX_RECOMMENDATIONS = 5;
+
+/**
+ * How many fresh catalog candidates to pull for the second-pass complementary
+ * search (see findSecondPassCandidate) — kept small since this runs a real
+ * embedding + Qdrant + Mongo round trip and we only need the first candidate
+ * that actually carries the counteracting ingredient.
+ */
+const SECOND_PASS_LIMIT = 5;
 
 /**
  * Category-aware selection tries to guarantee routine coverage (a routine
@@ -257,6 +268,7 @@ Write personalised explanations for each recommended product.`;
     output.sideEffectRisks ?? [],
     safetyCheckedProducts,
     baseRoutine,
+    userProfile,
   );
 
   return {
@@ -283,6 +295,7 @@ async function applySideEffectRisks(
   risks: SideEffectRisk[],
   pool: RecommendedProduct[],
   baseRoutine: Routine,
+  userProfile: UserProfile,
 ): Promise<{ explained: RecommendedProduct[]; complementary: ComplementaryRecommendation[]; routine: Routine }> {
   if (!risks.length) {
     return { explained, complementary: [], routine: baseRoutine };
@@ -297,7 +310,7 @@ async function applySideEffectRisks(
     return risk ? { ...p, sideEffectRisk: risk.risk } : p;
   });
 
-  const resolved = await resolveComplementaryProducts(risks, recommendedNames, pool);
+  const resolved = await resolveComplementaryProducts(risks, recommendedNames, pool, userProfile);
   if (!resolved.length) {
     return { explained: withRiskNotes, complementary: [], routine: baseRoutine };
   }
@@ -314,16 +327,26 @@ async function applySideEffectRisks(
 /**
  * Grounds each flagged risk in real catalog data: looks up which real
  * ingredients carry the counteracting CosIng function, then finds a product
- * already in the safety-checked pool (never a fresh, unchecked product, and
- * never one already recommended) whose ingredient list contains one of
- * them. Skips a risk if the LLM named a product not actually in this
- * recommendation set (hallucination guard), or if no real candidate is
- * found — never invents a product.
+ * whose ingredient list contains one of them — never one already
+ * recommended, and never a candidate that fails a safety check. Skips a risk
+ * if the LLM named a product not actually in this recommendation set
+ * (hallucination guard), or if no real candidate is found anywhere — never
+ * invents a product.
+ *
+ * Checks the already safety-checked `pool` first (cheap — no extra
+ * network/DB round trip), but a side-effect risk is often unrelated to the
+ * user's original concern (e.g. a hair-loss product causing dizziness/nausea
+ * — dizziness/nausea was never part of the search that built `pool`), so
+ * that pool has little chance of containing a real counteracting product.
+ * Falls back to findSecondPassCandidate, a fresh catalog search targeted at
+ * the counteracting ingredients themselves, safety-checked before being
+ * accepted.
  */
 async function resolveComplementaryProducts(
   risks: SideEffectRisk[],
   recommendedNames: Set<string>,
   pool: RecommendedProduct[],
+  userProfile: UserProfile,
 ): Promise<Array<{ risk: SideEffectRisk; candidate: RecommendedProduct }>> {
   const resolved: Array<{ risk: SideEffectRisk; candidate: RecommendedProduct }> = [];
   const usedCandidates = new Set<string>();
@@ -346,12 +369,14 @@ async function resolveComplementaryProducts(
     if (!counteractingIngredients.length) continue;
 
     const normalizedTargets = new Set(counteractingIngredients.map(i => i.toLowerCase()));
-    const candidate = pool.find(p =>
+    const isEligible = (p: RecommendedProduct) =>
       p.safetyStatus !== 'unsafe' &&
-      !recommendedNames.has(p.name) &&
-      !usedCandidates.has(p.name) &&
-      p.inci.some(ing => normalizedTargets.has(ing.toLowerCase())),
-    );
+      !isExcludedCandidate(p.name, recommendedNames, usedCandidates) &&
+      hasCounteractingIngredient(p.inci, normalizedTargets);
+
+    const candidate = pool.find(isEligible)
+      ?? await findSecondPassCandidate(risk, counteractingIngredients, normalizedTargets, recommendedNames, usedCandidates, userProfile);
+
     if (candidate) {
       resolved.push({ risk, candidate });
       usedCandidates.add(candidate.name);
@@ -359,6 +384,56 @@ async function resolveComplementaryProducts(
   }
 
   return resolved;
+}
+
+/** Shared by the pool search and the second-pass search below, so eligibility can't drift between the two. */
+function hasCounteractingIngredient(inci: string[], normalizedTargets: Set<string>): boolean {
+  return inci.some(ing => normalizedTargets.has(ing.toLowerCase()));
+}
+
+/** Shared by the pool search and the second-pass search below, so eligibility can't drift between the two. */
+function isExcludedCandidate(name: string, recommendedNames: Set<string>, usedCandidates: Set<string>): boolean {
+  return recommendedNames.has(name) || usedCandidates.has(name);
+}
+
+/**
+ * Second-pass search for a complementary product outside the pool already
+ * evaluated for the user's primary concern (see resolveComplementaryProducts
+ * above for why that pool is usually the wrong place to look). Runs a fresh
+ * embedding search targeted at the counteracting ingredients/risk itself,
+ * then safety-checks each hit (Layer 1 only, via checkProductSafety) before
+ * it can be accepted — a fresh product must clear safety just like the
+ * primary pool did, it just wasn't part of the original catalog search.
+ * Any failure here (embedding/search/safety-check) just leaves the risk
+ * without a complementary product — never blocks the primary flow.
+ */
+async function findSecondPassCandidate(
+  risk: SideEffectRisk,
+  counteractingIngredients: string[],
+  normalizedTargets: Set<string>,
+  recommendedNames: Set<string>,
+  usedCandidates: Set<string>,
+  userProfile: UserProfile,
+): Promise<RecommendedProduct | undefined> {
+  try {
+    const query = `parapharmaceutical product to counteract "${risk.risk}" — active ingredients: ${counteractingIngredients.slice(0, 10).join(', ')}`;
+    const embedding = await generateEmbedding(query);
+    const candidates = await findSimilarProducts(embedding, SECOND_PASS_LIMIT, userProfile.country);
+
+    const userConditions = [...(userProfile.allergies ?? []), ...(userProfile.conditions ?? [])];
+
+    for (const product of candidates) {
+      if (isExcludedCandidate(product.name, recommendedNames, usedCandidates)) continue;
+      if (!hasCounteractingIngredient(product.inci, normalizedTargets)) continue;
+
+      const checked = await checkProductSafety(product, userConditions);
+      if (checked.safetyStatus === 'unsafe') continue;
+      return checked;
+    }
+  } catch (err) {
+    console.warn(`[recommender] second-pass complementary search failed for "${risk.counteractingFunction}" — leaving risk without a complementary product`, err);
+  }
+  return undefined;
 }
 
 /**
