@@ -15,6 +15,7 @@ import {
   appendMessage,
   QuestioningState,
 } from './sessionStore';
+import { Routine } from '../types';
 
 // ─── Response types (consumed by the controller) ──────────────────────────────
 
@@ -40,6 +41,8 @@ export interface RecommendationResult {
   reasoning?: string;
   usageTips?: string[];
   confidence?: number;
+  /** Elevated, non-blocking side-effect risk flagged for this product — see complementaryRecommendations for the product resolved to counteract it. */
+  sideEffectRisk?: string;
 }
 
 export type ChatPhase = 'collecting' | 'questioning' | 'processing' | 'done' | 'error';
@@ -49,11 +52,24 @@ export interface ExcludedProductResult {
   reason: string;
 }
 
+/** A complementary product algorithmically resolved to counteract an elevated side-effect risk on a recommendation — see agents/recommender.ts. */
+export interface ComplementaryProductResult {
+  forProduct: string;
+  risk: string;
+  matchedFunction: string;
+  product: RecommendationResult;
+  explanation: string;
+}
+
 export interface ChatResponse {
   messages: ChatMessage[];
   phase: ChatPhase;
   recommendations?: RecommendationResult[];
   excludedProducts?: ExcludedProductResult[];
+  /** AM/PM sequencing + interaction guidance for `recommendations` — see agents/recommender.ts. */
+  routine?: Routine;
+  /** Complementary products for any elevated side-effect risk flagged among `recommendations` — see agents/recommender.ts. */
+  complementaryRecommendations?: ComplementaryProductResult[];
   error?: string;
 }
 
@@ -82,12 +98,23 @@ function noProductsFound(): ChatResponse {
   };
 }
 
-function recommendationsResponse(recs: RecommendationResult[], excludedProducts: ExcludedProductResult[]): ChatResponse {
+function hasRoutineContent(routine?: Routine): boolean {
+  return Boolean(routine && (routine.am.length > 0 || routine.pm.length > 0 || routine.interactionWarnings.length > 0));
+}
+
+function recommendationsResponse(
+  recs: RecommendationResult[],
+  excludedProducts: ExcludedProductResult[],
+  routine?: Routine,
+  complementaryRecommendations?: ComplementaryProductResult[],
+): ChatResponse {
   return {
     messages: [msg('assistant', 'Here are your personalised recommendations based on your concern:')],
     phase: 'done',
     recommendations: recs,
     ...(excludedProducts.length > 0 && { excludedProducts }),
+    ...(hasRoutineContent(routine) && { routine }),
+    ...((complementaryRecommendations?.length ?? 0) > 0 && { complementaryRecommendations }),
   };
 }
 
@@ -180,7 +207,8 @@ export async function processMessage(
 
     const excludedProducts = (graphResult.excludedRecommendations ?? []) as ExcludedProductResult[];
     await setSession(sessionId, { ...session, phase: 'done' });
-    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs, excludedProducts);
+    const complementaryRecommendations = (graphResult.complementaryRecommendations ?? []) as ComplementaryProductResult[];
+    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs, excludedProducts, graphResult.routine, complementaryRecommendations);
     await appendMessage(sessionId, 'assistant', response.messages[0].content);
     return response;
   }
@@ -234,7 +262,8 @@ export async function processMessage(
 
     const excludedProducts = (graphResult.excludedRecommendations ?? []) as ExcludedProductResult[];
     await setSession(sessionId, { ...session, phase: 'done' });
-    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs, excludedProducts);
+    const complementaryRecommendations = (graphResult.complementaryRecommendations ?? []) as ComplementaryProductResult[];
+    const response = recs.length === 0 ? noProductsFound() : recommendationsResponse(recs, excludedProducts, graphResult.routine, complementaryRecommendations);
     await appendMessage(sessionId, 'assistant', response.messages[0].content);
     return response;
   }
