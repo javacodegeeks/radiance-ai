@@ -1,16 +1,18 @@
 # Radiance AI
 
-An agentic recommendation system for cosmetic and skincare products. A multi-agent LangGraph workflow drives the core reasoning loop: it interviews the user to build a safety profile, searches a vector catalog, runs ingredient safety checks, and generates personalised product recommendations — all over a stateless REST API backed by persistent session storage.
+An agentic recommendation system for cosmetic and skincare products. A multi-agent LangGraph workflow drives the core reasoning loop: it interviews the user to build a safety profile, searches a vector catalog, runs a two-layer ingredient safety check, and generates personalised product recommendations — with an AM/PM routine, deterministic ingredient-interaction warnings, and algorithmically-resolved complementary products for any flagged side-effect risk — all over a stateless REST API backed by persistent session storage. Live per-step progress is available over SSE, and users can leave thumbs up/down feedback per recommended product.
 
 ---
 
 ## Architecture
 
-An agentic LangGraph workflow (Supervisor → Questioner → ProductFinder/WebResearcher → SafetyChecker → Recommender) backed by Qdrant (vector search), MongoDB (product catalog), and PostgreSQL (sessions, safety rules, EU CosIng data), all LLM/embedding calls routed through a LiteLLM proxy.
+An agentic LangGraph workflow (Supervisor → Questioner → ProductFinder/WebResearcher → SafetyChecker → Recommender) backed by Qdrant (vector search), MongoDB (product catalog, safety audit log, feedback), and PostgreSQL (sessions, safety rules, EU CosIng data + functions glossary), all LLM/embedding calls routed through a LiteLLM proxy.
 
 Full system diagrams, the agent workflow (including the two-layer Safety Checker), and the request lifecycle live in **[docs/architecture-overview.md](docs/architecture-overview.md)**.
 
 For an annotated guide to every source file — what it does, read-order, and which files need extra care when modified — see **[docs/file-map.md](docs/file-map.md)**.
+
+Contributing to this repo? See **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** for branching/commit conventions, the pre-PR checklist, test-writing patterns, and safe-change guidance for dangerous files.
 
 ---
 
@@ -71,14 +73,15 @@ cd data && npm run pipeline
 Or run individual steps:
 
 ```bash
-npm run pipeline:migrate    # Apply SQL migrations to PostgreSQL
-npm run pipeline:safety     # Seed ingredient contraindication rules
-npm run pipeline:load       # Download and load OFF/OBF dumps into MongoDB
-npm run pipeline:vectorize  # Generate embeddings and upsert into Qdrant
-npm run pipeline:cosing     # Load EU CosIng Annex II/III/IV/V into PostgreSQL
+npm run pipeline:migrate     # Apply SQL migrations to PostgreSQL
+npm run pipeline:safety      # Seed ingredient contraindication rules
+npm run pipeline:cosing      # Load EU CosIng Annex II/III/IV restrictions/prohibited + functions glossary into PostgreSQL
+npm run pipeline:load        # Download and load OFF/OBF dumps into MongoDB
+npm run pipeline:vectorize   # Generate embeddings and upsert into Qdrant
+npm run pipeline:categorize  # Classify products into routine-sequencing categories (cleanser/treatment/moisturizer/spf/exfoliant)
 ```
 
-`run-all.ts` runs migrate → safety → cosing (restrictions, then prohibited) → OBF load → vectorize, in that order (the OFF load is currently commented out in `run-all.ts`). The vectorize step auto-detects embedding dimensions and recreates the Qdrant collection if the model has changed. Requires `mongorestore` (part of `mongodb-database-tools`) on `PATH` for the OFF/OBF load steps.
+`run-all.ts` runs migrate → safety → CosIng restrictions → CosIng prohibited → CosIng functions glossary → OBF load → vectorize → classify-categories, in that order (the OFF load is currently commented out in `run-all.ts`). The vectorize step auto-detects embedding dimensions and recreates the Qdrant collection if the model has changed. The classify-categories step is idempotent — it only classifies products missing a `category` field, so it's safe to re-run after `pipeline:load` adds new products. Requires `mongorestore` (part of `mongodb-database-tools`) on `PATH` for the OFF/OBF load steps.
 
 ---
 
@@ -117,6 +120,24 @@ curl http://localhost:3001/health
 curl -s -X POST http://localhost:3001/api/chat \
   -H "Content-Type: application/json" \
   -d '{"sessionId": "session-001", "message": "I have dry skin and redness"}' | jq .
+```
+
+Send `Accept: text/event-stream` to get live per-agent-step progress (`event: progress`) instead of a single one-shot response — the final payload still arrives as `event: done` with the same JSON shape:
+
+```bash
+curl -N -X POST http://localhost:3001/api/chat \
+  -H "Content-Type: application/json" -H "Accept: text/event-stream" \
+  -d '{"sessionId": "session-001", "message": "I have dry skin and redness"}'
+```
+
+### Record recommendation feedback
+
+Thumbs up/down on a specific recommended product. Upserts per `(sessionId, productName, brand)` — a later call for the same key overwrites the current rating but keeps the change in an append-only history.
+
+```bash
+curl -s -X POST http://localhost:3001/api/feedback \
+  -H "Content-Type: application/json" \
+  -d '{"sessionId": "session-001", "productName": "CeraVe Moisturizing Cream", "brand": "CeraVe", "rating": "up"}'
 ```
 
 ---
@@ -246,3 +267,11 @@ curl http://localhost:4000/health/liveliness
 **`ts-node` cannot resolve modules**
 
 Ensure `dotenv` is installed as a dev dependency in the relevant package and that the `.env` file exists. The dev script uses `-r dotenv/config` to load it before module resolution.
+
+**Recommendations have no routine or complementary product despite a flagged side-effect risk**
+
+Non-fatal by design — a lookup/LLM failure anywhere in the resolution chain (`ai/src/agents/recommender.ts`'s `resolveComplementaryProducts`/`findSecondPassCandidate`/`buildComplementaryRoutine`) just leaves the risk noted with no complementary product rather than blocking the response. Check for one of: an LLM-returned `counteractingFunction` not in `COSING_FUNCTION_NAMES` (`ai/src/repositories/cosingFunctionsRepository.ts`), an empty CosIng function → ingredient lookup, or a failed `recommenderComplementary` LLM call — all logged as `[recommender] ...` warnings.
+
+**Products have no `category` (routine sequencing skips a step)**
+
+`category` is set once, offline, by `data/pipeline/08-classify-categories.ts` (`pipeline:categorize`) — not computed live per-request. Re-run that step after loading new products; it only classifies products missing the field, so it's safe to re-run.
