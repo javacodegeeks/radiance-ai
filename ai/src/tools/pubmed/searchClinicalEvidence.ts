@@ -1,4 +1,3 @@
-// @ts-ignore — LangChain tool() triggers TS2589 deep generic instantiation
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { searchPmids, fetchMetadata, fetchAbstracts } from './pubmedClient';
@@ -85,8 +84,34 @@ export async function searchClinicalEvidence(
  * High-level MCP tool that wraps searchClinicalEvidence for LLM function calling.
  * Returns normalised JSON optimised for downstream LLM reasoning.
  */
+// LangChain's tool() overload resolution against this schema shape
+// (optional/array/enum-chained Zod fields) triggers TS2589 ("Type
+// instantiation is excessively deep and possibly infinite"), which compounds
+// across all 5 tool() call sites in this codebase into a multi-minute,
+// OOM-crashing `tsc` build. Casting the schema to `any` at the tool()
+// call site short-circuits overload resolution; `rawInput` is cast back to
+// its real shape below so runtime/type safety inside the tool is unaffected.
+const searchClinicalEvidenceToolSchema = z.object({
+  query: z
+    .string()
+    .describe(
+      'Clinical search query, e.g. "niacinamide hyperpigmentation treatment efficacy randomized trial"',
+    ),
+  maxResults: z
+    .number().int().min(1).max(10).optional()
+    .describe('Max articles to return (default 5, max 10)'),
+  dateFrom:     z.string().optional().describe('Start date filter YYYY/MM/DD'),
+  dateTo:       z.string().optional().describe('End date filter YYYY/MM/DD'),
+  articleTypes: z
+    .array(ArticleTypeEnum).optional()
+    .describe('Filter: rct, systematic_review, meta_analysis, clinical_trial'),
+  freeFullText: z.boolean().optional().describe('Only free full-text articles'),
+});
+type SearchClinicalEvidenceInput = z.infer<typeof searchClinicalEvidenceToolSchema>;
+
 export const searchClinicalEvidenceTool = tool(
-  async (input) => {
+  async (rawInput) => {
+    const input = rawInput as SearchClinicalEvidenceInput;
     try {
       const filters: SearchFilters = {
         dateFrom:     input.dateFrom,
@@ -125,21 +150,6 @@ export const searchClinicalEvidenceTool = tool(
       'fetches metadata and abstracts, and returns normalized ranked JSON ready for ' +
       'LLM reasoning. Use when scientific validation, treatment efficacy comparison, ' +
       'or published research is needed to support a recommendation.',
-    schema: z.object({
-      query: z
-        .string()
-        .describe(
-          'Clinical search query, e.g. "niacinamide hyperpigmentation treatment efficacy randomized trial"',
-        ),
-      maxResults: z
-        .number().int().min(1).max(10).optional()
-        .describe('Max articles to return (default 5, max 10)'),
-      dateFrom:     z.string().optional().describe('Start date filter YYYY/MM/DD'),
-      dateTo:       z.string().optional().describe('End date filter YYYY/MM/DD'),
-      articleTypes: z
-        .array(ArticleTypeEnum).optional()
-        .describe('Filter: rct, systematic_review, meta_analysis, clinical_trial'),
-      freeFullText: z.boolean().optional().describe('Only free full-text articles'),
-    }),
+    schema: searchClinicalEvidenceToolSchema as any,
   },
 );

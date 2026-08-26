@@ -127,6 +127,14 @@ function applyLayer2Verdicts(
   for (const item of flagged) {
     const assessment = assessments.get(item.product.name);
 
+    // TODO(audit): assessment.reasoning (the Layer 2 LLM's own words) is
+    // concatenated into `notes` below and loses its identity as a distinct,
+    // LLM-generated fact — merged with the deterministic Layer 1 signal
+    // before it ever reaches GraphStateType/safety_audit_log. To make Layer 2
+    // reasoning independently auditable ("the LLM said X, here's why"),
+    // carry it as its own field (e.g. RecommendedProduct.llmSafetyReasoning)
+    // instead of folding it into `notes`, and thread it through
+    // safetyAuditRepository.SafetyAuditEntry.
     if (assessment?.verdict === 'approved') {
       const notes = item.notes ? `${assessment.reasoning} ${item.notes}` : assessment.reasoning;
       approved.push(toRecommendedProduct(item.product, 'safe', notes, 0.9));
@@ -157,7 +165,7 @@ type Layer1Result =
   | { kind: 'clear'; product: Product }
   | FlaggedProduct;
 
-async function assessProductLayer1(
+export async function assessProductLayer1(
   product: Product,
   userConditions: string[],
   hasUnrecognizedConditions: boolean,
@@ -235,6 +243,32 @@ async function assessProductLayer1(
   };
 }
 
+/**
+ * Layer-1-only safety check for products outside the main graph flow — e.g.
+ * agents/recommender.ts's second-pass complementary-product search, which
+ * evaluates a small, ad-hoc candidate list rather than the batched
+ * webResults/catalogResults the full safetyCheckerAgent runs over. Skips
+ * Layer 2's LLM batching (not worth a call for a handful of candidates) and
+ * treats a 'flagged' Layer 1 signal as 'caution' directly, favoring caution
+ * consistent with this file's other safety-net fallbacks.
+ */
+export async function checkProductSafety(
+  product: Product,
+  userConditions: string[],
+): Promise<RecommendedProduct> {
+  const result = await assessProductLayer1(product, userConditions, false);
+  switch (result.kind) {
+    case 'hard_block':
+      return toRecommendedProduct(result.product, 'unsafe', result.notes, 0);
+    case 'immediate_soft_warning':
+      return toRecommendedProduct(result.product, 'caution', result.notes, 0.5);
+    case 'flagged':
+      return toRecommendedProduct(result.product, 'caution', result.notes, 0.5);
+    case 'clear':
+      return toRecommendedProduct(result.product, 'safe', undefined, 1.0);
+  }
+}
+
 async function checkCosingRestrictions(ingredientSignals: string[], productName: string): Promise<CosingRestriction[]> {
   try {
     return await findCosingRestrictions(ingredientSignals);
@@ -270,7 +304,7 @@ function describeProhibitedSubstances(substances: CosingProhibitedSubstance[]): 
   return `${parts.join('; ')}.`;
 }
 
-function toRecommendedProduct(
+export function toRecommendedProduct(
   product: Product,
   safetyStatus: RecommendedProduct['safetyStatus'],
   safetyNotes: string | undefined,

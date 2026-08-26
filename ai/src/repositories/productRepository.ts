@@ -54,6 +54,7 @@ function toProduct(r: ProductDoc): Product {
     allergens:           normalizeTags(r['allergens_tags']),
     imageUrl:            toImageUrl(r),
     cachedAt:            r['cached_at'] instanceof Date ? r['cached_at'] : undefined,
+    category:            r['category'] as Product['category'],
   };
 }
 

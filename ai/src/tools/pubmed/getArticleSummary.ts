@@ -1,4 +1,3 @@
-// @ts-ignore — LangChain tool() triggers TS2589 deep generic instantiation
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { fetchMetadata } from './pubmedClient';
@@ -8,8 +7,24 @@ import { normalizeMetadata } from './normalizer';
  * Low-level MCP tool: fetch structured metadata for one or more PMIDs.
  * Returns title, authors, journal, publication date, and DOI.
  */
+// LangChain's tool() overload resolution against this schema shape triggers
+// TS2589 ("Type instantiation is excessively deep and possibly infinite") —
+// see searchClinicalEvidence.ts for the full explanation. Casting the schema
+// to `any` at the tool() call site avoids it; rawInput is cast back to its
+// real shape below.
+const getArticleSummaryToolSchema = z.object({
+  pmids: z
+    .union([
+      z.string().describe('A single PMID'),
+      z.array(z.string()).min(1).max(20).describe('Array of PMIDs (max 20)'),
+    ])
+    .describe('PubMed ID(s) to retrieve metadata for'),
+});
+type GetArticleSummaryInput = z.infer<typeof getArticleSummaryToolSchema>;
+
 export const getArticleSummaryTool = tool(
-  async (input) => {
+  async (rawInput) => {
+    const input = rawInput as GetArticleSummaryInput;
     try {
       const pmids   = Array.isArray(input.pmids) ? input.pmids : [input.pmids];
       const metaMap = await fetchMetadata(pmids);
@@ -32,13 +47,6 @@ export const getArticleSummaryTool = tool(
     description:
       'Retrieve structured metadata (title, authors, journal, date, DOI) for one or more ' +
       'PubMed articles by PMID. Use searchPubMed first to obtain PMIDs.',
-    schema: z.object({
-      pmids: z
-        .union([
-          z.string().describe('A single PMID'),
-          z.array(z.string()).min(1).max(20).describe('Array of PMIDs (max 20)'),
-        ])
-        .describe('PubMed ID(s) to retrieve metadata for'),
-    }),
+    schema: getArticleSummaryToolSchema as any,
   },
 );
