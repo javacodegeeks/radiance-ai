@@ -58,26 +58,69 @@ function toProduct(r: ProductDoc): Product {
   };
 }
 
+type Condition   = Schemas['Condition'];
+type QdrantFilter = Schemas['Filter'];
+type ScoredPoint  = Awaited<ReturnType<typeof qdrant.search>>[number];
+
+/**
+ * Base-catalog condition: matches points with no tenant_id payload key at
+ * all — data/pipeline's offline import never sets one. Applied even when
+ * no tenantId is resolved, so an admin-added product from one tenant never
+ * leaks into another tenant's (or an anonymous session's) results.
+ */
+function buildFilter(country: string | undefined, tenantScope: 'base' | string): QdrantFilter {
+  const must: Condition[] = [];
+  if (country) must.push({ key: 'countries', match: { value: country } });
+  must.push(
+    tenantScope === 'base'
+      ? { is_empty: { key: 'tenant_id' } }
+      : { key: 'tenant_id', match: { value: tenantScope } },
+  );
+  return { must };
+}
+
+function dedupeByHighestScore(resultSets: ScoredPoint[][], limit: number): ScoredPoint[] {
+  const seen = new Set<string>();
+  return resultSets
+    .flat()
+    .sort((a, b) => b.score - a.score)
+    .filter(hit => {
+      const id = String(hit.id);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+/**
+ * Searches the shared base catalog (tenant_id absent) and, when a tenantId
+ * is resolved (see common/tenantContext.ts), unions in that tenant's own
+ * additions (tenant_id-filtered) — never the whole catalog re-filtered per
+ * tenant. See "Resolved — catalog ownership is (b)" in the multi-tenancy
+ * spec section.
+ */
 export async function findSimilarProducts(
   embedding: number[],
   limit = 5,
   country?: string,
+  tenantId?: string,
 ): Promise<Product[]> {
-  const filter = country
-    ? { must: [{ key: 'countries', match: { value: country } }] }
-    : undefined;
-
-  const searchRequest: Schemas['SearchRequest'] = {
+  const searchRequest = (filter: QdrantFilter): Schemas['SearchRequest'] => ({
     vector: embedding,
     limit,
     with_payload: true,
     filter,
-  };
+  });
 
-  let hits;
+  let hits: ScoredPoint[];
   try {
-    hits = await qdrant.search(COLLECTION_NAME, searchRequest);
-    console.log(`[productRepository] Qdrant search returned ${hits.length} hit(s)${country ? ` (country=${country})` : ''}`);
+    const searches = [qdrant.search(COLLECTION_NAME, searchRequest(buildFilter(country, 'base')))];
+    if (tenantId) searches.push(qdrant.search(COLLECTION_NAME, searchRequest(buildFilter(country, tenantId))));
+
+    const resultSets = await Promise.all(searches);
+    hits = dedupeByHighestScore(resultSets, limit);
+    console.log(`[productRepository] Qdrant search returned ${hits.length} hit(s)${country ? ` (country=${country})` : ''}${tenantId ? ` (tenant=${tenantId})` : ''}`);
   } catch (err) {
     const detail = (err as { data?: unknown })?.data;
     if (detail !== undefined) {
