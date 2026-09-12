@@ -3,6 +3,7 @@ import { findIngredients } from '../common/inci';
 import { RepositoryError } from '../common/errors';
 import { generateEmbedding } from '../llm/embeddings';
 import { findSimilarProducts } from '../repositories/productRepository';
+import { getTenantId } from '../common/tenantContext';
 
 const MAX_RESULTS = 10;
 
@@ -23,7 +24,7 @@ export async function productFinderAgent(
   try {
     const embedding = await generateEmbedding(query);
     console.log(`[productFinder] embedding dims=${embedding.length}`);
-    const products  = await findSimilarProducts(embedding, MAX_RESULTS, country);
+    const products  = await findSimilarProducts(embedding, MAX_RESULTS, country, getTenantId());
     console.log(`[productFinder] found ${products.length} product(s)`);
     console.log(`[productFinder] products=${products.map(p => p.name).join(', ')}`);
     return { catalogResults: products };

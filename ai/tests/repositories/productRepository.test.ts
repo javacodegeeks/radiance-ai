@@ -20,16 +20,44 @@ describe('findSimilarProducts', () => {
     mockFind.mockReturnValue({ toArray: mockToArray });
   });
 
-  it('omits the country filter when none is given, and includes it when provided', async () => {
+  it('omits the country filter when none is given, and includes it when provided (always scoped to the base catalog)', async () => {
     (qdrant.search as jest.Mock).mockResolvedValue([]);
 
     await findSimilarProducts([0.1, 0.2], 5);
-    expect(qdrant.search).toHaveBeenLastCalledWith('products', expect.objectContaining({ filter: undefined }));
+    expect(qdrant.search).toHaveBeenLastCalledWith(
+      'products',
+      expect.objectContaining({ filter: { must: [{ is_empty: { key: 'tenant_id' } }] } }),
+    );
 
     await findSimilarProducts([0.1, 0.2], 5, 'US');
     expect(qdrant.search).toHaveBeenLastCalledWith(
       'products',
-      expect.objectContaining({ filter: { must: [{ key: 'countries', match: { value: 'US' } }] } }),
+      expect.objectContaining({
+        filter: { must: [{ key: 'countries', match: { value: 'US' } }, { is_empty: { key: 'tenant_id' } }] },
+      }),
+    );
+  });
+
+  it('unions the base catalog with tenant-owned additions when a tenantId is resolved, deduping by highest score', async () => {
+    (qdrant.search as jest.Mock)
+      .mockResolvedValueOnce([{ id: 'a', score: 0.5, payload: { mongo_id: 'a' } }])
+      .mockResolvedValueOnce([{ id: 'c', score: 0.9, payload: { mongo_id: 'c' } }]);
+    mockToArray.mockResolvedValue([]);
+
+    await findSimilarProducts([0.1, 0.2], 5, undefined, 'tenant-1');
+
+    expect(qdrant.search).toHaveBeenCalledTimes(2);
+    expect(qdrant.search).toHaveBeenNthCalledWith(
+      1,
+      'products',
+      expect.objectContaining({ filter: { must: [{ is_empty: { key: 'tenant_id' } }] } }),
+    );
+    expect(qdrant.search).toHaveBeenNthCalledWith(
+      2,
+      'products',
+      expect.objectContaining({
+        filter: { must: [{ key: 'tenant_id', match: { value: 'tenant-1' } }] },
+      }),
     );
   });
 
@@ -44,8 +72,8 @@ describe('findSimilarProducts', () => {
 
   it('hydrates matching Mongo docs, reordered to match Qdrant relevance order, mapped to Product fields', async () => {
     (qdrant.search as jest.Mock).mockResolvedValue([
-      { payload: { mongo_id: 'a' } },
-      { payload: { mongo_id: 'b' } },
+      { id: 'a', score: 0.9, payload: { mongo_id: 'a' } },
+      { id: 'b', score: 0.8, payload: { mongo_id: 'b' } },
     ]);
     // Returned from Mongo in the "wrong" order to prove re-sorting happens.
     mockToArray.mockResolvedValue([
