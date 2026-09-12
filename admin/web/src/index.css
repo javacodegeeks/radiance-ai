@@ -1,0 +1,206 @@
+:root {
+  --color-primary:       #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-tint:  #eef2ff;
+
+  --color-text:      #16181d;
+  --color-text-muted: #6b7280;
+  --color-border:    #e5e7eb;
+  --color-surface:   #ffffff;
+  --color-bg:        #f6f7fb;
+
+  --color-success:      #15803d;
+  --color-success-tint: #dcfce7;
+  --color-warning:      #b45309;
+  --color-warning-tint: #fef3c7;
+  --color-danger:       #b91c1c;
+  --color-danger-tint:  #fee2e2;
+  --color-neutral-tint: #eef0f2;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 { font-size: 22px; font-weight: 700; margin: 0 0 16px; letter-spacing: -0.01em; }
+h2 { font-size: 17px; font-weight: 600; margin: 0 0 12px; }
+
+a { color: var(--color-primary); }
+
+/* ─── App shell ─────────────────────────────────────────────────────── */
+
+.app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 14px 28px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.app-title { font-weight: 700; color: var(--color-primary); letter-spacing: -0.01em; white-space: nowrap; }
+
+.app-header nav { display: flex; gap: 4px; flex: 1; }
+.app-header nav a {
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.app-header nav a:hover { background: var(--color-bg); color: var(--color-text); }
+.app-header nav a.active { color: var(--color-primary); background: var(--color-primary-tint); }
+
+.app-header-right { display: flex; align-items: center; gap: 12px; }
+
+main { padding: 32px 40px; max-width: 100%; width: 100%; flex: 1; }
+
+/* Every top-level page renders a single <section> — style it as a card so
+   pages don't sit flush against the bare page background. */
+main > section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 28px 32px;
+}
+
+.signed-out {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100vh; gap: 12px; text-align: center;
+}
+.signed-out h1 { color: var(--color-primary); }
+
+/* ─── Buttons ────────────────────────────────────────────────────────── */
+
+button {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.search-bar button,
+.product-form button,
+form button[type="submit"] {
+  background: var(--color-primary);
+  color: #fff;
+  border: 1px solid var(--color-primary);
+  padding: 9px 18px;
+}
+.search-bar button:hover,
+.product-form button:hover,
+form button[type="submit"]:hover { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
+.search-bar button:disabled,
+.product-form button:disabled,
+form button[type="submit"]:disabled { opacity: 0.55; cursor: default; }
+
+.pagination button,
+.tab {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  padding: 7px 14px;
+}
+.pagination button:hover:not(:disabled) { background: var(--color-bg); }
+.pagination button:disabled { opacity: 0.45; cursor: default; }
+
+/* ─── Forms ──────────────────────────────────────────────────────────── */
+
+.search-bar { display: flex; gap: 8px; margin-bottom: 20px; }
+.search-bar input { flex: 1; }
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-tint);
+}
+
+.product-form { display: flex; flex-direction: column; gap: 14px; max-width: 480px; }
+.product-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--color-text-muted); }
+.product-form input, .product-form select, .product-form textarea { font-weight: 400; color: var(--color-text); }
+.product-form button { align-self: flex-start; margin-top: 4px; }
+
+.form-error { color: var(--color-danger); background: var(--color-danger-tint); padding: 10px 14px; border-radius: var(--radius-sm); font-size: 14px; }
+.form-success { color: var(--color-success); background: var(--color-success-tint); padding: 10px 14px; border-radius: var(--radius-sm); font-size: 14px; }
+.empty-state { color: var(--color-text-muted); text-align: center; padding: 32px 0; }
+
+/* ─── Tables ─────────────────────────────────────────────────────────── */
+
+.product-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.product-table th, .product-table td {
+  text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--color-border);
+}
+.product-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--color-bg);
+}
+.product-table tbody tr:hover { background: var(--color-bg); }
+
+/* ─── Badges ─────────────────────────────────────────────────────────── */
+
+.badge { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; display: inline-block; }
+.badge-success { background: var(--color-success-tint); color: var(--color-success); }
+.badge-warning { background: var(--color-warning-tint); color: var(--color-warning); }
+.badge-danger { background: var(--color-danger-tint); color: var(--color-danger); }
+.badge-neutral { background: var(--color-neutral-tint); color: var(--color-text-muted); }
+
+.embedding-status { display: inline-flex; align-items: center; gap: 8px; }
+.reindex-button {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+  padding: 3px 10px;
+  font-size: 12px;
+}
+.reindex-button:hover { background: var(--color-primary-tint); border-color: var(--color-primary); }
+
+/* ─── Misc ───────────────────────────────────────────────────────────── */
+
+.tenant-info { display: grid; grid-template-columns: auto 1fr; gap: 8px 20px; font-size: 14px; margin: 0; }
+.tenant-info dt { font-weight: 600; color: var(--color-text-muted); }
+.tenant-info dd { margin: 0; }
+
+.pagination { display: flex; align-items: center; gap: 14px; margin-top: 20px; font-size: 13px; color: var(--color-text-muted); }
+
+.page-subtitle { color: var(--color-text-muted); margin: -8px 0 20px; font-size: 14px; }
+
+.tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); padding-bottom: 12px; flex-wrap: wrap; }
+.tab { border-radius: 999px; font-size: 13px; padding: 7px 14px; }
+.tab-active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
